@@ -11,8 +11,8 @@ The repo contains a package (in the src folder) and scripts for reproducing the 
 To reproduce the results from the article, the easiest way is to add the package in your julia enviromnent:
 
 ```julia
-]
-add https://github.com/neoscalc/ChemicalAdvectionPorosityWave.jl
+julia> ]
+pkg> add https://github.com/neoscalc/ChemicalAdvectionPorosityWave.jl
 ```
 
 This will install the package ChemicalAdvectionPorosityWave. You can then run the following code in a terminal or in a file:
@@ -21,10 +21,8 @@ This will install the package ChemicalAdvectionPorosityWave. You can then run th
 ```julia
 using ChemicalAdvectionPorosityWave
 
-
 # path to save the output data (to be define by the user)
 path_hdf5 = joinpath([pwd(),"output.h5"])
-
 
 # define the resolution of the grid and the size of the model
 grid = Grid(nx=200, nz=400, Lx=450u"m", Lz=900u"m", tfinal=1.5u"Myr")
@@ -95,7 +93,7 @@ Courant_nb = 0.7
 advection_algo = advection(;algo_name=algo_name, grid=grid, compo_f=domain.compo_f)
 model = Model(grid=grid, domain=domain, advection_algo=advection_algo, path_data=path_hdf5, Courant=Courant_nb)
 
-# define callbacks to call at the end of each timestep
+# define callbacks to call at the end of each timestep of the two-phase flow
 
 # compute flux and velocity fields for the solid and fluid phase
 velocity_call = FunctionCallingCallback(velocity_call_func; funcat=Vector{Float64}(), func_everystep=true, func_start = false, tdir=1);
@@ -121,6 +119,6 @@ callbacks = CallbackSet(velocity_call, advection_call, steplimiter, plotting, ou
 sol = simulate(model, callbacks=callbacks)
 ```
 
-This code will run for 1 advection algorithm for 1 resolution with the settings of the article. You can change the resolution changing the definition of the variable grid and the algorithm name by changing the variable algo_name.
+This code will run one model for one advection algorithm with the settings of the article. You can change the resolution changing the definition of the variable grid and the algorithm name by changing the variable algo_name (by default WENO-5 with 200x400 grid points).
 
-If you want to explore the code or run the rotational numerical test, you can download or clone this repo in your personal space.
+If you want to explore the code or run the rotational numerical test, you can download or clone this repo in your personal space. The main code is in the src folder and the rotational test is contained in the folder article/rotation_cone.
