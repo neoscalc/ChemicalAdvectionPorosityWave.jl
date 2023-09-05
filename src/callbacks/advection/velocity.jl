@@ -1,5 +1,4 @@
 using Parameters
-using Plots
 
 function fluid_flux_ad!(q_f, ϕ, Pe, v_s, Properties, Domain, Grid)
     @unpack nz, nx = Grid
@@ -17,7 +16,6 @@ function fluid_flux_ad!(q_f, ϕ, Pe, v_s, Properties, Domain, Grid)
         is, in = limit_periodic(i-1, nz), limit_periodic(i, nz)
 
         q_f[:z][I] = av_k_z(is,in,j) / av_μf_z(is,in,j) * ((Pe[in,j]-Pe[is,j]) / Δz_ad + av_Δρ_z(is,in,j)) + v_s[:z][I] * 0.5 * (ϕ[in,j] + ϕ[is,j])
-        # q_f[:z][I] = av_k_z(is,in,j) / av_μf_z(is,in,j) * ((Pe[in,j]-Pe[is,j]) / Δz_ad + av_Δρ_z(is,in,j))
     end
 
     for I in CartesianIndices(q_f[:x])
@@ -25,9 +23,7 @@ function fluid_flux_ad!(q_f, ϕ, Pe, v_s, Properties, Domain, Grid)
         jw, je = limit_periodic(j-1, nx), limit_periodic(j, nx)
 
         q_f[:x][I] = av_k_x(i,jw,je) / av_μf_x(i,jw,je) * (Pe[i,je]-Pe[i,jw]) / Δx_ad + v_s[:x][I] * 0.5 * (ϕ[i,je] + ϕ[i,jw])
-        # q_f[:x][I] = av_k_x(i,jw,je) / av_μf_x(i,jw,je) * (Pe[i,je]-Pe[i,jw]) / Δx_ad
     end
-
 end
 
 function fluid_velocity_ad!(v_f, q_f, ϕ, Grid)
@@ -57,8 +53,6 @@ function solid_velocity_ad!(vc_s, ϕ, ϕ_prev, Δt, Properties, Domain, Grid)
 
     for I in CartesianIndices(vc_s[:z])
         vc_s[:z][I] = (ϕ[I] - ϕ_prev[I]) / Δt * Δz_ad
-        # vc_s[:x][I] = (ϕ[I] - ϕ_prev[I]) / Δt * Δx_ad
-        # vc_s[:x][I] = 0
     end
 
 end

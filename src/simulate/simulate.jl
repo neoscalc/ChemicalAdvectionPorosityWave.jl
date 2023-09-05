@@ -4,10 +4,10 @@ function simulate(model; callbacks=false)
     @unpack compaction_ϕ, compaction_t, compaction_l, compaction_Pe = model
 
     # save output initial conditions if a path is defined in a hdf5 file
-    if model.path_data !== ""
-        hdf5_start(grid, domain, model.path_data);
-        hdf5_initial_conditions(grid, domain, model)
-    end
+    # if model.path_data !== ""
+    #     hdf5_start(grid, domain, model.path_data);
+    #     hdf5_initial_conditions(grid, domain, model)
+    # end
 
     #define initial conditions for the model
     u0[:,:,1] .= zeros(grid.nz, grid.nx)

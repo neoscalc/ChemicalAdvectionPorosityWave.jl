@@ -1,5 +1,5 @@
 module ChemicalAdvectionPorosityWave
-^
+
 using Reexport: @reexport
 @reexport using Plots
 @reexport using Unitful
@@ -21,18 +21,16 @@ include("callbacks/advection/WENO_scheme.jl")
 include("callbacks/advection/MIC_scheme.jl")
 include("callbacks/advection/stepsize_limiter.jl")
 include("callbacks/output/output.jl")
+include("utils.jl")
 
-
-export Grid, RockProperties, FluidProperties, Domain, initialize_physical_prop!, incircle, inellipse, inrectangle
-export BoundaryConditions, Model
+export Grid, Domain
+export Model
 export simulate
-export porosity_wave, porosity_wave_T
+export porosity_wave
 export plotting_tpf, composition_fluid
 export advection
+# export UWScheme, SemiLagrangianScheme, WENOScheme, advection
 export velocity_call_func, advection_call_func, dtmaxC
 export hdf5_start, hdf5_initial_conditions, save_data
-
-
-# export what defines public API
 
 end

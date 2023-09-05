@@ -11,6 +11,8 @@ struct Grid
     Δz::Float64
     x::StepRangeLen
     z::StepRangeLen
+    xs::StepRangeLen
+    zs::StepRangeLen
     grid::NamedTuple{(:x, :z), Tuple{Matrix{Float64}, Matrix{Float64}}}
     tfinal::Float64
 
@@ -24,9 +26,11 @@ struct Grid
             Δz = Lz / (nz)
             x = range(Δx/2, length=nx, stop= Lx-Δx/2)
             z = range(Δz/2, length=nz, stop= Lz-Δz/2)
+            xs = range(0, length=nx+1, stop= Lx)
+            zs = range(0, length=nz+1, stop= Lz)
             # x first, z second
             grid = (x=x' .* ones(nz), z=ones(nx)' .* z)
-            new(nx, nz, Lx, Lz, Δx, Δz, x, z, grid, tfinal)
+            new(nx, nz, Lx, Lz, Δx, Δz, x, z, xs, zs, grid, tfinal)
         end
     end
 end

@@ -1,42 +1,126 @@
 # ChemicalAdvectionPorosityWave.jl
 
-ChemicalAdvectionPorosityWave is the source code for the paper "" by Dominguez et al., 2023.
+ChemicalAdvectionPorosityWave is the source code for the paper "Modelling chemical advection during magma ascent" by Dominguez et al., 2023.
+
+The aim of this repository is to be able to reproduce the results in the paper and test four different advection schemes: an upwind scheme, a weighted essentially non oscillatory (WENO-5) scheme, a quasi-monotone semi-Lagrangian (QMSL) scheme and a marker-in-cell (MIC) method, applied to the problem of chemical advection during magma ascent.
+
+The repo contains a package (in the src folder) and scripts for reproducing the numerical tests and the data from the article
 
 ### Quick start
 
+To reproduce the results from the article, the easiest way is to add the package in your julia enviromnent:
+
 ```julia
-grid = Grid(nx=201, nz=201, Lx=2u"km", Lz=4000u"m", tfinal=0.62u"Myr")
+]
+add https://github.com/neoscalc/ChemicalAdvectionPorosityWave.jl
+```
 
-rock = UnitProperties(visco_s=1e19u"Pa*s",
-            ρ_s=2_700u"kg/m^3",
-            shear_mod=35u"GPa",
-            )
-
-anomaly = UnitProperties(visco_s=1e19u"Pa*s",
-            ρ_s=2_700u"kg/m^3",
-            shear_mod=35u"GPa",
-            ϕ=0.10
-            )
-
-units = Dict(:rock => rock,
-             :anomaly => anomaly)
-
-fluid = FluidProperties(visco_f=100u"Pa*s",
-            ρ_f=2_200u"kg/m^3")
+This will install the package ChemicalAdvectionPorosityWave. You can then run the following code in a terminal or in a file:
 
 
-# initial conditions
-initialize_physical_prop!(domain) do x, z
-    if inellipse(;x₀=1000u"m", z₀=300u"m", rx=800u"m", rz=100u"m")(x, z)
-        :anomaly
+```julia
+using ChemicalAdvectionPorosityWave
+
+
+# path to save the output data (to be define by the user)
+path_hdf5 = joinpath([pwd(),"output.h5"])
+
+
+# define the resolution of the grid and the size of the model
+grid = Grid(nx=200, nz=400, Lx=450u"m", Lz=900u"m", tfinal=1.5u"Myr")
+
+domain = Domain(x=grid.x, z=grid.z, nb_element=9)
+
+# gaussian anomaly as initial conditions
+a = 0.05 # max porosity in the gaussian
+bx = grid.Lx÷2 # x position of the gaussian in m
+bz = grid.Lz÷6 # z position of the gaussian in m
+σ = 30 # standard deviation of the gaussian
+
+# define initial porosity as a gaussian
+domain.ϕ .= 1e-3 .+ a .* exp.(-((grid.x' .* ones(size(grid.z)) .- bx).^2 .+ (ones(size(grid.x))' .* grid.z .- bz).^2) ./ (σ)^2)
+
+# ETN, Basalt D. Giordano and D.B. Dingwell, 2003 renormalised to 100 wt%
+# SiO2, TiO2, Al2O3, FeO, MgO, CaO, Na2O, K2O
+compo_basalt = [48.32,
+                1.65,
+                16.72,
+                10.41,
+                5.31,
+                10.75,
+                3.85,
+                1.99,
+                1.00
+                ]
+
+
+# Andesite, Neuville et al, 1992 renormalised to 100 wt%
+# SiO2, TiO2, Al2O3, FeO, MgO, CaO, Na2O, K2O
+compo_andesit = [59.87,
+                 0.82,
+                 16.93,
+                 5.28,
+                 3.28,
+                 5.70,
+                 3.76,
+                 1.36,
+                 3
+                 ]
+
+x0 = grid.Lx÷2  # x position of the gaussian in m
+z0 = grid.Lz÷6  # z position of the gaussian in m
+R = 60  # radius of the cylinder in m
+
+# define centered circle anomaly as initial conditions for the magma composition. Basalt in the circle and andesite outside the circle.
+for I in CartesianIndices(domain.compo_f[:,:,1])
+    r = sqrt((grid.grid[1][I] - x0)^2 + (grid.grid[2][I] - z0)^2)
+    if r <= R
+        for k in 1:size(domain.compo_f, 3)
+            domain.compo_f[I[1], I[2], k] = compo_andesit[k]
+        end
     else
-        :rock
+        for k in 1:size(domain.compo_f, 3)
+            domain.compo_f[I[1], I[2], k] = compo_basalt[k]
+        end
     end
 end
 
-#define boundaries for the top and bottom of the model (Mirror boundaries on the sides)
-boundary_conditions = BoundaryConditions(grid=grid, fluid_flux=false, Pe_top=0, Pe_bot=0)
+# to choose the advection schemes, 4 options: UW (upwind), WENO (WENO-5), SL (quasi-monotone semi-Lagrangian) and MIC (marker-in-cell)
+algo_name = "WENO"
+
+# Courant number has to be lower than 1 for upwind and WENO-5, can be higher for MIC and QMSL
+Courant_nb = 0.7
+
+# define structures for the models
+advection_algo = advection(;algo_name=algo_name, grid=grid, compo_f=domain.compo_f)
+model = Model(grid=grid, domain=domain, advection_algo=advection_algo, path_data=path_hdf5, Courant=Courant_nb)
+
+# define callbacks to call at the end of each timestep
+
+# compute flux and velocity fields for the solid and fluid phase
+velocity_call = FunctionCallingCallback(velocity_call_func; funcat=Vector{Float64}(), func_everystep=true, func_start = false, tdir=1);
+
+# call advection scheme and advect the chemical composition of the magma
+advection_call = FunctionCallingCallback(advection_call_func; funcat=Vector{Float64}(), func_everystep=true, func_start = false, tdir=1);
+
+# define plotting function
+plotting = FunctionCallingCallback(plotting_tpf; funcat=Vector{Float64}(), func_everystep=true, func_start = false, tdir=1);
+
+# define saving output at 4 time -> 0.35 Myr, 0.80 Myr, 1.20 Myr and at the final timestep
+@unpack compaction_t = model
+save_time = [ustrip(u"s", 0.35u"Myr") / compaction_t , ustrip(u"s", 0.80u"Myr") / compaction_t, ustrip(u"s", 1.20u"Myr") / compaction_t, grid.tfinal / compaction_t]
+output_call = PresetTimeCallback(save_time,save_data)
+
+# define a steplimiter for the timestep of the two-phase flow (depends on the courant number of the magma)
+steplimiter = StepsizeLimiter(dtmaxC;safety_factor=10//10,max_step=false,cached_dtcache=0.0)
+
+# define the order in which to call the callback functions
+callbacks = CallbackSet(velocity_call, advection_call, steplimiter, plotting, output_call)
 
 # run model
-sol = simulate(model)
+sol = simulate(model, callbacks=callbacks)
 ```
+
+This code will run for 1 advection algorithm for 1 resolution with the settings of the article. You can change the resolution changing the definition of the variable grid and the algorithm name by changing the variable algo_name.
+
+If you want to explore the code or run the rotational numerical test, you can download or clone this repo in your personal space.
