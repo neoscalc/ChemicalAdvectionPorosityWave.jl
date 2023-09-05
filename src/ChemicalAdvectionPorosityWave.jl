@@ -23,6 +23,11 @@ include("callbacks/advection/stepsize_limiter.jl")
 include("callbacks/output/output.jl")
 include("utils.jl")
 
+function __init__()
+    # initialise global logger for OrdinaryDiffEq
+    global_logger(TerminalLogger())
+end
+
 export Grid, Domain
 export Model
 export simulate
