@@ -4,7 +4,7 @@ ChemicalAdvectionPorosityWave is the source code for the paper "Modelling chemic
 
 The aim of this repository is to be able to reproduce the results in the paper and test four different advection schemes: an upwind scheme, a weighted essentially non oscillatory (WENO-5) scheme, a quasi-monotone semi-Lagrangian (QMSL) scheme and a marker-in-cell (MIC) method, applied to the problem of chemical advection during magma ascent.
 
-The repo contains a package (in the src folder) and scripts for reproducing the numerical tests and the data from the article
+The repo contains a package (in the src folder) and scripts for reproducing the numerical tests and the data from the article.
 
 ### Quick start
 
