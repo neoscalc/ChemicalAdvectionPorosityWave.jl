@@ -8,14 +8,14 @@ The repo contains a package (in the src folder) and scripts for reproducing the 
 
 ### Quick start
 
-To reproduce the results from the article, the easiest way is to add the package in your julia enviromnent:
+To reproduce the results from the article, the easiest way is to add this (unregistered) package in your julia enviromnent:
 
 ```julia
 julia> ]
 pkg> add https://github.com/neoscalc/ChemicalAdvectionPorosityWave.jl
 ```
 
-This will install the package ChemicalAdvectionPorosityWave. You can then run the following code in a terminal or in a file:
+This will install the package ChemicalAdvectionPorosityWave. You can copy and run the file contained in article/coupling/const_visco.jl or run the following code:
 
 
 ```julia
