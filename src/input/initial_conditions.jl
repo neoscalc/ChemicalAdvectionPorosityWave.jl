@@ -2,21 +2,20 @@ using Unitful
 using Unitful: 𝐌, 𝐋, 𝐓, 𝚯
 using Parameters
 
-struct Grid
-    nx::Int
-    nz::Int
-    Lx::Float64
-    Lz::Float64
-    Δx::Float64
-    Δz::Float64
-    x::StepRangeLen
-    z::StepRangeLen
-    xs::StepRangeLen
-    zs::StepRangeLen
-    grid::NamedTuple{(:x, :z), Tuple{Matrix{Float64}, Matrix{Float64}}}
-    tfinal::Float64
-
-    function Grid(nx, nz, Lx, Lz, tfinal)
+struct Grid{T1, T2, T3, T4}
+    nx::T1
+    nz::T1
+    Lx::T2
+    Lz::T2
+    Δx::T2
+    Δz::T2
+    x::T3
+    z::T3
+    xs::T3
+    zs::T3
+    grid::T4
+    tfinal::T2
+    function Grid(nx::T1, nz::T1, Lx::T2, Lz::T2, tfinal::T2) where {T1 <: Integer, T2 <: Real}
         if Lx <= 0 || Lz <= 0
             error("Length should be positive.")
         elseif tfinal <= 0
@@ -30,7 +29,10 @@ struct Grid
             zs = range(0, length=nz+1, stop= Lz)
             # x first, z second
             grid = (x=x' .* ones(nz), z=ones(nx)' .* z)
-            new(nx, nz, Lx, Lz, Δx, Δz, x, z, xs, zs, grid, tfinal)
+
+            T3 = typeof(x)
+            T4 = typeof(grid)
+            new{T1, T2, T3, T4}(nx, nz, Lx, Lz, Δx, Δz, x, z, xs, zs, grid, tfinal)
         end
     end
 end
@@ -40,9 +42,9 @@ function Grid(;nx::Int, nz::Int, Lx::Unitful.Length, Lz::Unitful.Length, tfinal:
 end
 
 
-@with_kw struct Domain{Type <: AbstractRange}
-    x::Type
-    z::Type
+@with_kw struct Domain{T1 <: AbstractRange}
+    x::T1
+    z::T1
     # units::Dict
     visco_s::Float64 = 1e19  # in Pa.s
     visco_f::Array{Float64, 2} = ones(length(z), length(x)) .* 100  # in Pa.s
@@ -68,7 +70,7 @@ end
 @with_kw struct Model
     grid::Grid
     domain::Domain
-    advection_algo
+    advection_algo::Union{UWScheme, WENOScheme, SemiLagrangianScheme, MICScheme}
     # advection_algo
     Courant::Float64 = 1.5
     ϕ_ini::Array{Float64, 2} = copy(domain.ϕ)

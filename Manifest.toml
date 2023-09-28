@@ -1,6 +1,8 @@
 # This file is machine-generated - editing it directly is not advised
 
+julia_version = "1.9.3"
 manifest_format = "2.0"
+project_hash = "1071f5c1bf0856f36725a176f7e211d8f585130b"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "a4c8e0f8c09d4aa708289c1a5fc23e2d1970017a"

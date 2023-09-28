@@ -6,7 +6,7 @@ path_hdf5 = joinpath([pwd(),"output.h5"])
 
 
 # define the resolution of the grid and the size of the model
-grid = Grid(nx=200, nz=400, Lx=450u"m", Lz=900u"m", tfinal=1.5u"Myr")
+grid = Grid(nx=200, nz=400, Lx=450.0u"m", Lz=900.0u"m", tfinal=1.5u"Myr")
 
 domain = Domain(x=grid.x, z=grid.z, nb_element=9)
 

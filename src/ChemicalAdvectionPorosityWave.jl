@@ -1,5 +1,7 @@
 module ChemicalAdvectionPorosityWave
 
+using Logging: global_logger
+using TerminalLoggers: TerminalLogger
 using Reexport: @reexport
 @reexport using Plots
 @reexport using Unitful
@@ -10,7 +12,6 @@ using Reexport: @reexport
 
 # Write your package code here.
 include("solvers/two_phase_flow.jl")
-include("input/initial_conditions.jl")
 include("simulate/simulate.jl")
 include("callbacks/visualization/plotting.jl")
 include("callbacks/advection/velocity.jl")
@@ -24,6 +25,7 @@ include("callbacks/output/output.jl")
 include("utils.jl")
 
 function __init__()
+
     # initialise global logger for OrdinaryDiffEq
     global_logger(TerminalLogger())
 end
@@ -34,8 +36,10 @@ export simulate
 export porosity_wave
 export plotting_tpf, composition_fluid
 export advection
-# export UWScheme, SemiLagrangianScheme, WENOScheme, advection
+export UWScheme, SemiLagrangianScheme, WENOScheme, MICScheme
 export velocity_call_func, advection_call_func, dtmaxC
 export hdf5_start, hdf5_initial_conditions, save_data
+
+include("input/initial_conditions.jl")
 
 end
