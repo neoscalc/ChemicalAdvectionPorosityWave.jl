@@ -1,6 +1,7 @@
+# ChemicalAdvectionPorosityWave.jl
+
 [![DOI](https://zenodo.org/badge/685576414.svg)](https://zenodo.org/badge/latestdoi/685576414)
 
-# ChemicalAdvectionPorosityWave.jl
 
 ChemicalAdvectionPorosityWave is the source code for the paper "Modelling chemical advection during magma ascent" by Dominguez et al., 2023.
 
