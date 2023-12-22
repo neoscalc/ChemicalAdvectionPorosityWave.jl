@@ -11,7 +11,7 @@ The repo contains a package (in the src folder) and scripts for reproducing the 
 
 ### Quick start
 
-To reproduce the results from the article, the easiest way is to add this (unregistered) package in your julia enviromnent:
+To reproduce the results from the article, the easiest way is to add this (unregistered) package in your julia environment:
 
 ```julia
 julia> ]
