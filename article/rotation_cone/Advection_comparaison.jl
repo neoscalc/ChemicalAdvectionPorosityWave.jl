@@ -1,6 +1,3 @@
-#= first script in Julia of a monotone conservative semi-lagrangian scheme
-using Bernejo and Conde, 2003 formulation =#
-
 using Plots
 using Interpolations
 using BenchmarkTools
