@@ -100,8 +100,14 @@ end
     De::Float64 = round(compaction_ϕ^(b-1) * (1 / domain.shear_mod) * compaction_Pe; digits=6)
     Δx_ad::Float64 = grid.Δx / compaction_l
     Δz_ad::Float64 = grid.Δz / compaction_l
-    x_ad::StepRangeLen = range(0, length=grid.nx, stop= (Δx_ad * (grid.nx-1)))
-    z_ad::StepRangeLen = range(0, length=grid.nz, stop= (Δz_ad * (grid.nz-1)))
+    xs_ad::StepRangeLen = grid.xs ./ compaction_l
+    xs_ad_vec::Array{Float64, 1} = collect(xs_ad)
+    x_ad::StepRangeLen = grid.x ./ compaction_l
+    x_ad_vec::Array{Float64, 1} = collect(x_ad)
+    zs_ad::StepRangeLen = grid.zs ./ compaction_l
+    zs_ad_vec::Array{Float64, 1} = collect(zs_ad)
+    z_ad::StepRangeLen = grid.z ./ compaction_l
+    z_ad_vec::Array{Float64, 1} = collect(z_ad)
     grid_ad::NamedTuple{(:x, :z), Tuple{Matrix{Float64}, Matrix{Float64}}} = (x=x_ad' .* ones(grid.nz), z=ones(grid.nx)' .* z_ad)
     t_count::Array{Float64, 1} = zeros(1)
     path_data::String = ""

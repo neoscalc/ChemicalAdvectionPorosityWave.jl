@@ -69,7 +69,9 @@ end
     nx_marker::Int = nx*3
     ny_marker::Int = ny*3
     x::StepRangeLen = range(0, length=nx, stop= Lx)
+    x_vec::Array{Float64, 1} = collect(x)
     y::StepRangeLen = range(0, length=ny, stop= Ly)
+    y_vec::Array{Float64, 1} = collect(y)
     X::Array{Float64, 2} = x' .* ones(length(y))
     Y::Array{Float64, 2} = ones(length(x))' .* y
     x_mark::Array{Float64, 1} = collect(LinRange(0, Lx, nx_marker))

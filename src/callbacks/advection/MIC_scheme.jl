@@ -256,15 +256,15 @@ end
 
 
 
-function interpol_velocity_MIC!(X_mark, Z_mark, v_staggered, v_centered, MIC, Δt, z_ad, x_ad, zc_ad, xc_ad)
+function interpol_velocity_MIC!(X_mark, Z_mark, v_staggered, v_centered, MIC, Δt, zs_ad, xs_ad, z_ad, x_ad)
 
     @unpack nx_marker, nz_marker, x_mark, z_mark, X_mark_save, Z_mark_save, vc_t_old, vs_t_old, v_t_old, vc_timestep, vs_timestep, v_timestep = MIC
 
     # interpolate velocities on the pressure nodes position
-    setp_vcx = extrapolate(scale(interpolate(v_centered[:x], BSpline(Cubic(Periodic(OnCell())))), zc_ad, xc_ad), Periodic())
+    setp_vcx = extrapolate(scale(interpolate(v_centered[:x], BSpline(Cubic(Periodic(OnCell())))), z_ad, x_ad), Periodic())
 
     # interpolation
-    setp_vcz = extrapolate(scale(interpolate(v_centered[:z], BSpline(Cubic(Periodic(OnCell())))), zc_ad, xc_ad), Periodic())
+    setp_vcz = extrapolate(scale(interpolate(v_centered[:z], BSpline(Cubic(Periodic(OnCell())))), z_ad, x_ad), Periodic())
 
     for I = CartesianIndices(X_mark)
         vc_t_old[1][I] = setp_vcx(Z_mark[I], X_mark[I])
@@ -272,10 +272,10 @@ function interpol_velocity_MIC!(X_mark, Z_mark, v_staggered, v_centered, MIC, Δ
     end
 
     # interpolate velocities on the velocity nodes position
-    setp_vsx = extrapolate(scale(interpolate(v_staggered[:x], BSpline(Cubic(Periodic(OnCell())))), zc_ad, x_ad), Periodic())
+    setp_vsx = extrapolate(scale(interpolate(v_staggered[:x], BSpline(Cubic(Periodic(OnCell())))), z_ad, xs_ad), Periodic())
 
     # interpolation
-    setp_vsz = extrapolate(scale(interpolate(v_staggered[:z], BSpline(Cubic(Periodic(OnCell())))), z_ad, xc_ad), Periodic())
+    setp_vsz = extrapolate(scale(interpolate(v_staggered[:z], BSpline(Cubic(Periodic(OnCell())))), zs_ad, x_ad), Periodic())
 
     @inbounds for I = CartesianIndices(X_mark)
         vs_t_old[1][I] = setp_vsx(Z_mark[I], X_mark[I])
@@ -319,32 +319,30 @@ function interpol_velocity_MIC!(X_mark, Z_mark, v_staggered, v_centered, MIC, Δ
         Z_mark .= Z_mark_save .+ v_timestep[2] .* Δt
     end
 
-    X_ad = x_ad[end] - x_ad[1]
-    Z_ad = z_ad[end] - z_ad[1]
+    X_ad = xs_ad[end] - xs_ad[1]
+    Z_ad = zs_ad[end] - zs_ad[1]
 
     # apply periodic boundary condition
     for I = CartesianIndices(X_mark)
-        if X_mark[I] < x_ad[1]
+        if X_mark[I] < xs_ad[1]
             X_mark[I] += X_ad
-        elseif X_mark[I] > x_ad[end]
+        elseif X_mark[I] > xs_ad[end]
             X_mark[I] -= X_ad
         end
-        if Z_mark[I] < z_ad[1]
+        if Z_mark[I] < zs_ad[1]
             Z_mark[I] += Z_ad
-        elseif Z_mark[I] > z_ad[end]
+        elseif Z_mark[I] > zs_ad[end]
             Z_mark[I] -= Z_ad
         end
     end
 end
 
 
-function interpol_marker_to_nodes!(u, MIC, grid, zc_ad, xc_ad, compaction_l)
+function interpol_marker_to_nodes!(u, MIC, grid, parameters, z_ad_vec, x_ad_vec)
 
     @unpack nx, nz, Δx, Δz = grid;
+    @unpack Δx_ad, Δz_ad = parameters;
     @unpack u_mark, X_mark, Z_mark, u_sum, wt_sum = MIC
-
-    Δx_ad = Δx / compaction_l
-    Δz_ad = Δz / compaction_l
 
     for k = axes(u, 3)
 
@@ -356,8 +354,8 @@ function interpol_marker_to_nodes!(u, MIC, grid, zc_ad, xc_ad, compaction_l)
         @inbounds for I in CartesianIndices(X_mark)
 
             # index of markers related to the grid
-            i = floor(Int, (Z_mark[I] - zc_ad[1]) / Δz_ad) + 1
-            j = floor(Int, (X_mark[I] - xc_ad[1]) / Δx_ad) + 1
+            i = floor(Int, (Z_mark[I] - z_ad_vec[1]) / Δz_ad) + 1
+            j = floor(Int, (X_mark[I] - x_ad_vec[1]) / Δx_ad) + 1
 
             # boundary conditions
             is = limit_periodic(i, nz)
@@ -370,8 +368,8 @@ function interpol_marker_to_nodes!(u, MIC, grid, zc_ad, xc_ad, compaction_l)
             iu_mark = nb_el * (I[1] - 1) + k
 
             # compute distance
-            Δz_mark = Z_mark[I] - zc_ad[is]
-            Δx_mark = X_mark[I] - xc_ad[jw]
+            Δz_mark = Z_mark[I] - z_ad_vec[is]
+            Δx_mark = X_mark[I] - x_ad_vec[jw]
 
             # compute weights
             wt_sw = (1 - Δx_mark / Δx_ad) * (1 - Δz_mark / Δz_ad)
@@ -401,20 +399,16 @@ function interpol_marker_to_nodes!(u, MIC, grid, zc_ad, xc_ad, compaction_l)
 end
 
 
-function MIC!(u, v_staggered, v_centered, MIC, Δt, grid, compaction_l)
+function MIC!(u, v_staggered, v_centered, MIC, parameters, Δt, grid)
 
     @unpack Δx, Δz, Lx, Lz, nx, nz = grid
+    @unpack z_ad, x_ad, zs_ad, xs_ad, z_ad_vec, x_ad_vec, zs_ad_vec, xs_ad_vec = parameters
     @unpack X_mark, Z_mark = MIC
 
-    z_ad = range(0, length=nz+1, stop= Lz / compaction_l)
-    x_ad = range(0, length=nx+1, stop= Lx / compaction_l)
-    zc_ad = range((Δz/2) / compaction_l, length=nz, stop= (Lz-Δz/2) / compaction_l)
-    xc_ad = range((Δx/2) / compaction_l, length=nx, stop= (Lx-Δx/2) / compaction_l)
-
     # Interpol velocity on markers' position
-    interpol_velocity_MIC!(X_mark, Z_mark, v_staggered, v_centered, MIC, Δt, z_ad, x_ad, zc_ad, xc_ad)
+    interpol_velocity_MIC!(X_mark, Z_mark, v_staggered, v_centered, MIC, Δt, zs_ad, xs_ad, z_ad, x_ad)
 
     # Perform the interpolation from the markers to the grid
-    interpol_marker_to_nodes!(u, MIC, grid, zc_ad, xc_ad, compaction_l)
+    interpol_marker_to_nodes!(u, MIC, grid, parameters, z_ad_vec, x_ad_vec)
 
 end

@@ -1,6 +1,5 @@
 using Parameters
 using Interpolations
-using Plots
 import Base.Threads.@threads
 
 @with_kw struct SemiLagrangianScheme

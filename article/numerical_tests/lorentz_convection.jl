@@ -80,7 +80,7 @@ function main()
         UW_scheme.Upwind!(u_UW, UW.u_old, Param.v0, Param.Δt, Param)
         SL_scheme.semi_lagrangian!(u_SL_QM, SL, Param.v0, Param.v0, Param; method="quasi-monotone")
         WENO_scheme.WENO_scheme!(u_WENO, Param.v0, WENO, Param; method="Z")
-        # MIC_scheme.MIC!(u_MIC, MIC,Param.v0, Param)
+        MIC_scheme.MIC!(u_MIC, MIC,Param.v0, Param)
 
         change_rotation = false
 
@@ -90,10 +90,10 @@ function main()
             vy0 .= .- vy0
             counter_half += 1
             change_rotation = true
-            # writedlm("Data/UW_half.txt", u_UW)
-            # writedlm("Data/WENO_half.txt", u_WENO)
-            # writedlm("Data/SL_QM_half.txt", u_SL_QM)
-            # writedlm("Data/MIC_half.txt", u_MIC)
+            writedlm("Data/UW_half.txt", u_UW)
+            writedlm("Data/WENO_half.txt", u_WENO)
+            writedlm("Data/SL_QM_half.txt", u_SL_QM)
+            writedlm("Data/MIC_half.txt", u_MIC)
         end
 
         l = @layout [a b; c d]
@@ -115,17 +115,15 @@ function main()
     vx0 .= .- vx0
     vy0 .= .- vy0
 
-    # print(mass_SL_QM)
-
-    # writedlm("Data/UW.txt", u_UW)
-    # writedlm("Data/WENO.txt", u_WENO)
-    # writedlm("Data/SL_QM.txt", u_SL_QM)
-    # writedlm("Data/MIC.txt", u_MIC)
-    # writedlm("Data/mass.txt", mass)
-    # writedlm("Data/vx.txt",  vx0)
-    # writedlm("Data/vy.txt", vy0)
-    # writedlm("Data/gridx.txt", grid[1])
-    # writedlm("Data/gridy.txt", grid[2])
+    writedlm("Data/UW.txt", u_UW)
+    writedlm("Data/WENO.txt", u_WENO)
+    writedlm("Data/SL_QM.txt", u_SL_QM)
+    writedlm("Data/MIC.txt", u_MIC)
+    writedlm("Data/mass.txt", mass)
+    writedlm("Data/vx.txt",  vx0)
+    writedlm("Data/vy.txt", vy0)
+    writedlm("Data/gridx.txt", grid[1])
+    writedlm("Data/gridy.txt", grid[2])
 
 
 end

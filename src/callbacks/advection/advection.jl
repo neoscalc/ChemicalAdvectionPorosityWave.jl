@@ -60,12 +60,12 @@ function advection_call_func(u, t, integrator)
         @unpack vc_f = advection
         velocity_to_center!(vc_f, v_f)
 
-        MIC!(compo_f, v_f, vc_f, advection, Δt, grid, compaction_l)
+        MIC!(compo_f, v_f, vc_f, advection, parameters, Δt, grid)
 
         @unpack u_mark, X_mark, Z_mark, density_mark = advection
         reseeding_marker!(u_mark, X_mark, Z_mark, density_mark, advection, compaction_l)
 
-        # display(scatter(X_mark, Z_mark,legend=false, markersize=0.1, color=:blue, xlim=(grid.Lx/compaction_l /4, grid.Lx/compaction_l /4 * 3)))
+        display(scatter(X_mark, Z_mark,legend=false, markersize=0.1, color=:blue, xlim=(grid.Lx/compaction_l /4, grid.Lx/compaction_l /4 * 3)))
 
     end
 

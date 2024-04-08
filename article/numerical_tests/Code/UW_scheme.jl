@@ -17,7 +17,6 @@ function Upwind!(u_new, u_old, v, Δt, Param)
         i,j = Tuple(I)
         is,in = limit_periodic(i-1, ny), limit_periodic(i+1, ny)
         jw, je = limit_periodic(j-1, nx), limit_periodic(j+1, nx)
-        # u_new[I] = u_old[I] - (Δt / Δy) * (max(0,v[2][I]) * (u_old[I] - u_old[is,j]) + min(0,v[2][I]) * (u_old[in,j] - u_old[I])) - (Δt / Δx) * (max(0,v[1][I]) * (u_old[I] - u_old[i,jw]) + min(0,v[1][I]) * (u_old[i,je] - u_old[I]))
 
         if v[1][I] > 0
             if v[2][i,j] > 0

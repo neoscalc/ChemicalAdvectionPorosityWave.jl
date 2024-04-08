@@ -30,7 +30,7 @@ end
 function velocity_interp!(X_mark, Y_mark, v, MIC, parameters)
 
     @unpack x, y, Δt = parameters;
-    @unpack X, Y, nx_marker, ny_marker, x_mark, y_mark, X_mark, Y_mark, u_mark, X_mark_save, Y_mark_save, v_t_old, v_timestep = MIC
+    @unpack X, Y, nx_marker, ny_marker, x_mark, y_mark, u_mark, X_mark_save, Y_mark_save, v_t_old, v_timestep = MIC
 
     # interpolation
     itp = interpolate(v[1], BSpline(Linear(Periodic(OnCell()))))
@@ -74,7 +74,7 @@ end
 function interpol_marker_to_nodes!(u, MIC, parameters)
 
     @unpack x, y, Δx, Δy, nx, ny, Δt = parameters;
-    @unpack u_mark, X_mark, Y_mark, u_sum, wt_sum = MIC
+    @unpack u_mark, X_mark, Y_mark, u_sum, wt_sum, x_vec, y_vec = MIC
 
     # reset values for new interpolation
     u_sum .= 0
@@ -83,8 +83,8 @@ function interpol_marker_to_nodes!(u, MIC, parameters)
     @inbounds for I in CartesianIndices(X_mark)
 
         # index of markers related to the grid
-        i = trunc(Int,(Y_mark[I])/Δy) + 1
-        j = trunc(Int,(X_mark[I])/Δx) + 1
+        i = floor(Int,(Y_mark[I])/Δy) + 1
+        j = floor(Int,(X_mark[I])/Δx) + 1
 
         # boundary conditions
         is = limit_periodic(i, ny)
@@ -92,10 +92,9 @@ function interpol_marker_to_nodes!(u, MIC, parameters)
         jw = limit_periodic(j, nx)
         je = limit_periodic(j+1, nx)
 
-
         # compute distance
-        Δy_mark = Y_mark[I] - y[is]
-        Δx_mark = X_mark[I] - x[jw]
+        Δy_mark = Y_mark[I] - y_vec[is]
+        Δx_mark = X_mark[I] - x_vec[jw]
 
         # compute weights
         wt_sw = (1 - Δx_mark / Δx) * (1 - Δy_mark / Δy)
@@ -122,7 +121,6 @@ function interpol_marker_to_nodes!(u, MIC, parameters)
     end
 
 end
-
 
 
 function MIC!(u, MIC, v, parameters)

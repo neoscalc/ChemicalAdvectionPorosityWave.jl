@@ -1,5 +1,4 @@
 using Parameters
-using Plots
 
 function dtmaxC(u,p,t)
     @unpack tfinal = p[:grid]

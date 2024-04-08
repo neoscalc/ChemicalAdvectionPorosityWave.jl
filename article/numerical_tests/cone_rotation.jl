@@ -120,3 +120,79 @@ function main()
 end
 
 main()
+
+
+
+
+
+cd(@__DIR__)
+
+
+# grid
+nx = 201
+ny = 201
+Lx = 1.0
+Ly = 1.0
+Δx = Lx / (nx-1)
+Δy = Ly / (ny-1)
+x = range(0, length=nx, stop= Lx)
+y = range(0, length=ny, stop= Ly)
+grid = (x' .* ones(ny), ones(nx)' .* y)
+w = π*1e-5  # angular velocity
+vx0 = -w .* (grid[2] .- Ly/2)
+vy0 = w .* (grid[1] .- Lx/2)
+period = 1  # revolution number
+tmax = period / (w/(2*π))
+Δt = 200.0
+
+u0::Matrix{Float64} = zeros(ny, nx)
+
+R = 24*Δx
+x0 = 1/4
+y0 = 1/4
+
+for I in CartesianIndices(u0)
+    r = sqrt((grid[1][I] - x0)^2 + (grid[2][I] - y0)^2)
+    if r <= R
+        u0[I] = 1
+    else
+        u0[I] = 0
+    end
+end
+
+Param = Model.ModelParameters(u0=u0, Δx=Δx, Δy=Δy, Lx=Lx, Ly=Ly, vx0=vx0, vy0=vy0, tmax=tmax, Δt=Δt)
+
+SL = Model.SemiLagrangianScheme(nx=nx, ny=ny, u0=u0);
+WENO = Model.WENOScheme(nx=nx, ny=ny, u0=u0);
+UW = Model.UWScheme(nx=nx, ny=ny, u0=u0)
+MIC = Model.MICScheme(u0=u0,nx=nx, ny=ny, Lx=Lx, Ly=Ly)
+
+u_SL_QM::Matrix{Float64} = copy(u0)
+u_WENO::Matrix{Float64} = copy(u0)
+u_UW::Matrix{Float64} = copy(u0)
+u_MIC::Matrix{Float64} = copy(u0)
+
+# initialize marker composition
+MIC_scheme.MIC_initialize_markers!(MIC.u_mark, u_MIC, MIC, Param)
+
+itp::Interpolations.BSplineInterpolation{Float64, 2, Matrix{Float64}, BSpline{Linear{Periodic{OnCell}}}, Tuple{Base.OneTo{Int64}, Base.OneTo{Int64}}}
+
+    # interpolation
+itp .= interpolate(Param.v0[1], BSpline(Linear(Periodic(OnCell()))));
+    # scaled interpolation
+sitp = scale(itp, y, x)
+@btime setp_vx = extrapolate($sitp, $Periodic())
+    # scaled interpolation with extrapolation on the boundaries
+
+
+
+
+@unpack X_mark, Y_mark = MIC
+
+@btime MIC_scheme.velocity_interp!($X_mark, $Y_mark, $Param.v0, $MIC, $Param);
+
+    # Perform the interpolation from the markers to the grid
+@btime MIC_scheme.interpol_marker_to_nodes!($u_MIC, $MIC, $Param)
+
+
+@btime MIC_scheme.MIC!($u_MIC, $MIC, $Param.v0, $Param)
