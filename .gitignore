@@ -1,3 +1,7 @@
 *.jl.*.cov
 *.jl.cov
 *.jl.mem
+.json
+.vscode/
+*.h5
+*.hdf5

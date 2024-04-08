@@ -2,6 +2,7 @@ module SL_scheme
 
 using Parameters
 using Interpolations
+using OrdinaryDiffEq
 
 
 @inline function limit_periodic(a, n)
@@ -11,66 +12,39 @@ end
 
 
 # second order implicit mid point method
-function interpol_velocity!(v_t_half, v, v_timestep, SL, Param)
+function initial_pos_marker!(x_t_depart, y_t_depart, v_t_half, v, v_timestep, SL, Param, iter)
 
     @unpack grid, Δt, x, y, nx, ny = Param;
-    @unpack x_t_half, y_t_half = SL;
 
-    x_t_half .= grid[1] .- v[1] .* Δt/2  # calculate the previous position of the particle at position t+1/2 from the position at t+1
-    y_t_half .= grid[2] .- v[2] .* Δt/2  # calculate the previous position of the particle at position t+1/2 from the position at t+1
-
-    # for the 1st timestep, when v_timestep = 0
     if sum(v_timestep[1] .+ v_timestep[2]) !== 0.0
-    # interpolation
-        itp_x = interpolate(((v[1] .+ v_timestep[1]) / 2), BSpline(Linear()))
-        itp_y = interpolate(((v[2] .+ v_timestep[2]) / 2), BSpline(Linear()))
+        v_t_half[1] .= (v[1] .+ v_timestep[1]) ./ 2
+        v_t_half[2] .= (v[2] .+ v_timestep[2]) ./ 2
     else
-        itp_x = interpolate(v[1], BSpline(Linear()))
-        itp_y = interpolate(v[2], BSpline(Linear()))
+        v_t_half[1] .= copy(v[1])
+        v_t_half[2] .= copy(v[2])
     end
+
+    x_t_depart .= grid[1] .- v_t_half[1] .* Δt / 2 # calculate the previous position of the particle at position t+1/2 from the position at t+1
+    y_t_depart .= grid[2] .- v_t_half[2] .* Δt / 2
+    itp_x = interpolate(v_t_half[1], BSpline(Linear()))
+    itp_y = interpolate(v_t_half[2], BSpline(Linear()))
 
     # scaled interpolation
     sitp = scale(itp_x, y, x)
-    setp = extrapolate(sitp, Line())
+    setp_x = extrapolate(sitp, Line())
     # # scaled interpolation with extrapolation on the boundaries
-
-    for I in CartesianIndices((ny, nx))
-        v_t_half[1][I] = setp(grid[2][I],x_t_half[I]);
-    end
 
     # scaled interpolation
     sitp = scale(itp_y, y, x)
-    setp = extrapolate(sitp, Line())
+    setp_y = extrapolate(sitp, Line())
     # # scaled interpolation with extrapolation on the boundaries
 
-    for I in CartesianIndices((ny, nx))
-        v_t_half[2][I] = setp(y_t_half[I], grid[1][I],);
-    end
-
-    # iterate 3 times to improve approximation
-    for _ in 1:3
-        SL.x_t_half .= grid[1] .- v_t_half[1] .* Δt/2  # calculate the previous position of the particle at position t+1/2 from the position at t+1
-        SL.y_t_half .= grid[2] .- v_t_half[2] .* Δt/2  # calculate the previous position of the particle at position t+1/2 from the position at t+1
-
-        itp_x = interpolate(v_t_half[1], BSpline(Linear()))
-        itp_y = interpolate(v_t_half[2], BSpline(Linear()))
-
-        # scaled interpolation
-        sitp = scale(itp_x, y, x)
-        setp = extrapolate(sitp, Line())
-        # # scaled interpolation with extrapolation on the boundaries
-
-        @inbounds for I in CartesianIndices((ny, nx))
-            v_t_half[1][I] = setp(grid[2][I],SL.x_t_half[I]);
-        end
-
-        # scaled interpolation
-        sitp = scale(itp_y, y, x)
-        setp = extrapolate(sitp, Line())
-        # # scaled interpolation with extrapolation on the boundaries
-
-        @inbounds for I in CartesianIndices((ny, nx))
-            v_t_half[2][I] = setp(y_t_half[I], grid[1][I]);
+    # iterate iter times to improve approximation
+    for _ in 1:iter
+        for I in CartesianIndices((ny, nx))
+            # calculate the previous position of the particle at position t from the position at t+1/2
+            x_t_depart[I] = grid[1][I] - setp_x(grid[2][I],((x_t_depart[I] + grid[1][I]) / 2)) * Δt
+            y_t_depart[I] = grid[2][I] - setp_y((y_t_depart[I] + grid[2][I]) / 2 , grid[1][I]) * Δt
         end
     end
 end
@@ -88,7 +62,7 @@ function SL_linear!(u, SL, parameters)
     # scaled interpolation with extrapolation on the boundaries
 
     @inbounds for I = CartesianIndices((ny, nx))
-        u[I] = setp(SL.y_t0[I], SL.x_t0[I])
+        u[I] = setp(SL.y_t_depart[I], SL.x_t_depart[I])
     end
 end
 
@@ -105,7 +79,7 @@ function SL_quasi_monotone!(u, SL, parameters)
     # scaled interpolation with extrapolation on the boundaries
 
     @inbounds for I = CartesianIndices((ny, nx))
-        SL.u_cubic[I] = setp(SL.y_t0[I], SL.x_t0[I])
+        SL.u_cubic[I] = setp(SL.y_t_depart[I], SL.x_t_depart[I])
     end
 
     @inbounds for I = CartesianIndices((ny, nx))
@@ -150,7 +124,7 @@ function SL_cubic!(u, SL, parameters)
     # scaled interpolation with extrapolation on the boundaries
 
     @inbounds for I = CartesianIndices((ny, nx))
-        u[I] = setp(SL.y_t0[I], SL.x_t0[I])
+        u[I] = setp(SL.y_t_depart[I], SL.x_t_depart[I])
     end
 
 end
@@ -196,7 +170,7 @@ function SL_quasi_monotone_conv!(u, SL, parameters)
     setp = extrapolate(sitp, Periodic())
 
     @inbounds for I = CartesianIndices((ny, nx))
-        SL.u_cubic[I] = setp(SL.y_t0[I], SL.x_t0[I])
+        SL.u_cubic[I] = setp(SL.y_t_depart[I], SL.x_t_depart[I])
     end
 
     # interpolation with linear spline
@@ -207,7 +181,7 @@ function SL_quasi_monotone_conv!(u, SL, parameters)
     setp = extrapolate(sitp, Periodic())
 
     @inbounds for I = CartesianIndices((ny, nx))
-        SL.u_linear[I] = setp(SL.y_t0[I], SL.x_t0[I])
+        SL.u_linear[I] = setp(SL.y_t_depart[I], SL.x_t_depart[I])
     end
 
     @inbounds for I = CartesianIndices((ny, nx))
@@ -247,11 +221,7 @@ function semi_lagrangian!(u, SL, v, v_timestep, parameters; method::String="quas
 
     @unpack x, y, grid, Δx, Δy, Δt, nx, ny = parameters;
 
-    interpol_velocity!(SL.v_t_half, v, v_timestep, SL, parameters)
-
-    SL.x_t0 .= grid[1] .- SL.v_t_half[1] .* Δt  # calculate the previous position of the particle at position t from the position at t+1
-    SL.y_t0 .= grid[2] .- SL.v_t_half[2] .* Δt  # calculate the previous position of the particle at position t from the position at t+1
-
+    initial_pos_marker!(SL.x_t_depart, SL.y_t_depart, SL.v_t_half, v, v_timestep, SL, parameters, 6)
 
     if method == "quasi-monotone conservative"
         SL_quasi_monotone_conv!(u, SL, parameters)
@@ -262,7 +232,7 @@ function semi_lagrangian!(u, SL, v, v_timestep, parameters; method::String="quas
     elseif method == "linear"
         SL_linear!(u, SL, parameters)
     else
-        error("Unknown method for the Semi-Lagrangian Scheme.")
+        error("Unknown method for the semi-Lagrangian scheme.")
     end
 
 end

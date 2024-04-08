@@ -1,5 +1,3 @@
-#= first script in Julia of a monotone conservative semi-lagrangian scheme
-using Bernejo and Conde, 2003 formulation =#
 
 using Plots
 using Interpolations
@@ -21,6 +19,10 @@ using .WENO_scheme
 using .MIC_scheme
 
 function main()
+
+    cd(@__DIR__)
+
+
     # grid
     nx = 201
     ny = 201

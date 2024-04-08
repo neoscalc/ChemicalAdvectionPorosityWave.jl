@@ -2,7 +2,7 @@ using ChemicalAdvectionPorosityWave
 
 
 # path to save the output data
-path_hdf5 = joinpath([pwd(),"output.h5"])
+path_hdf5 = joinpath(@__DIR__,"output.h5")
 
 
 # define the resolution of the grid and the size of the model
@@ -65,7 +65,7 @@ for I in CartesianIndices(domain.compo_f[:,:,1])
 end
 
 # to choose the advection schemes, 4 options: UW (upwind), WENO (WENO-5), SL (quasi-monotone semi-Lagrangian) and MIC (marker-in-cell)
-algo_name = "WENO"
+algo_name = "SL"
 
 # Courant number has to be lower than 1 for upwind and WENO-5, can be higher for MIC and QMSL
 Courant_nb = 0.7
