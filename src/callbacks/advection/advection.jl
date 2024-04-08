@@ -65,7 +65,7 @@ function advection_call_func(u, t, integrator)
         @unpack u_mark, X_mark, Z_mark, density_mark = advection
         reseeding_marker!(u_mark, X_mark, Z_mark, density_mark, advection, compaction_l)
 
-        display(scatter(X_mark, Z_mark,legend=false, markersize=0.1, color=:blue, xlim=(grid.Lx/compaction_l /4, grid.Lx/compaction_l /4 * 3)))
+        # display(scatter(X_mark, Z_mark,legend=false, markersize=0.1, color=:blue, xlim=(grid.Lx/compaction_l /4, grid.Lx/compaction_l /4 * 3)))
 
     end
 

@@ -94,8 +94,8 @@ output_call = PresetTimeCallback(save_time,save_data)
 steplimiter = StepsizeLimiter(dtmaxC;safety_factor=10//10,max_step=false,cached_dtcache=0.0)
 
 # define the order in which to call the callback functions
-# callbacks = CallbackSet(velocity_call, advection_call, steplimiter, plotting, output_call)
-callbacks = CallbackSet(velocity_call, advection_call, steplimiter, output_call)
+callbacks = CallbackSet(velocity_call, advection_call, steplimiter, plotting, output_call)
+# callbacks = CallbackSet(velocity_call, advection_call, steplimiter, output_call)
 
 
 @unpack grid, domain, advection_algo, ϕ_ini, u0, du0 = model
@@ -132,8 +132,3 @@ println("Solving the problem...")
 @time sol = solve(prob_sparse, TRBDF2(linsolve=UMFPACKFactorization()), progress = true, callback = callbacks,
 progress_steps = 1, save_everystep=false;)
 
-
-
-
-# run model
-sol = simulate(model, callbacks=callbacks)
