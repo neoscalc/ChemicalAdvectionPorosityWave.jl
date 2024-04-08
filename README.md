@@ -1,5 +1,8 @@
 # ChemicalAdvectionPorosityWave.jl
 
+[![DOI](https://zenodo.org/badge/685576414.svg)](https://zenodo.org/badge/latestdoi/685576414)
+
+
 ChemicalAdvectionPorosityWave is the source code for the paper "Modelling chemical advection during magma ascent" by Dominguez et al., 2023.
 
 The aim of this repository is to be able to reproduce the results in the paper and test four different advection schemes: an upwind scheme, a weighted essentially non oscillatory (WENO-5) scheme, a quasi-monotone semi-Lagrangian (QMSL) scheme and a marker-in-cell (MIC) method, applied to the problem of chemical advection during magma ascent.
@@ -8,7 +11,7 @@ The repo contains a package (in the src folder) and scripts for reproducing the 
 
 ### Quick start
 
-To reproduce the results from the article, the easiest way is to add this (unregistered) package in your julia enviromnent:
+To reproduce the results from the article, the easiest way is to add this (unregistered) package in your julia environment:
 
 ```julia
 julia> ]
