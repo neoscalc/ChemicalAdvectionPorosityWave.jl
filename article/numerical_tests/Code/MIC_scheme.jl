@@ -2,6 +2,7 @@ module MIC_scheme
 
 using Parameters
 using Interpolations
+using Base.Threads: @threads, Atomic, atomic_add!
 
 @inline function limit_periodic(a, n)
     # check if index is on the boundary, if yes take value on the opposite for periodic, if not, don't change the value
@@ -21,7 +22,7 @@ function MIC_initialize_markers!(u_mark, u, MIC, parameters)
     setp = extrapolate(sitp, Periodic())
     # scaled interpolation with extrapolation on the boundaries
 
-    @inbounds for I = CartesianIndices(u_mark)
+    @inbounds @threads for I = CartesianIndices(u_mark)
         u_mark[I] = setp(Y_mark[I], X_mark[I])
     end
 
@@ -46,41 +47,44 @@ function velocity_interp!(X_mark, Y_mark, v, MIC, parameters)
     setp_vy = extrapolate(sitp, Periodic())
     # scaled interpolation with extrapolation on the boundaries
 
-    @inbounds for I = CartesianIndices(u_mark)
+    @inbounds @threads for I = CartesianIndices(u_mark)
         v_t_old[1][I] = setp_vx(Y_mark[I], X_mark[I])
         v_t_old[2][I] = setp_vy(Y_mark[I], X_mark[I])
     end
 
-    # save current marker position
     X_mark_save .= X_mark
     Y_mark_save .= Y_mark
 
-    # Advect marker with previous velocity
-    X_mark .= X_mark .+ v_t_old[1] .* Δt .* 0.5
-    Y_mark .= Y_mark .+ v_t_old[2] .* Δt .* 0.5
+    # save current marker position
+    @inbounds @threads for I in eachindex(X_mark)
+        X_mark[I] += v_t_old[1][I] * Δt * 0.5
+        Y_mark[I] += v_t_old[2][I] * Δt * 0.5
+    end
 
-    @inbounds for I = CartesianIndices(u_mark)
+    @inbounds @threads for I = CartesianIndices(u_mark)
         v_timestep[1][I] = setp_vx(Y_mark[I], X_mark[I])
         v_timestep[2][I] = setp_vy(Y_mark[I], X_mark[I])
     end
 
-    # Advect marker with fixed point velocity
-    X_mark .= X_mark_save .+ v_timestep[1] .* Δt
-    Y_mark .= Y_mark_save .+ v_timestep[2] .* Δt
-
+    @inbounds @threads for I in eachindex(X_mark)
+        X_mark[I] = X_mark_save[I] + v_timestep[1][I] * Δt
+        Y_mark[I] = Y_mark_save[I] + v_timestep[2][I] * Δt
+    end
 end
 
 
 function interpol_marker_to_nodes!(u, MIC, parameters)
 
     @unpack x, y, Δx, Δy, nx, ny, Δt = parameters;
-    @unpack u_mark, X_mark, Y_mark, u_sum, wt_sum, x_vec, y_vec = MIC
+    @unpack u_mark, X_mark, Y_mark, u_sum, wt_sum, x_vec, y_vec, u_sum_atomic, wt_sum_atomic = MIC
 
-    # reset values for new interpolation
-    u_sum .= 0
-    wt_sum .= 0
+    # reset values of atomic arrays
+    @inbounds @threads for I in eachindex(u_sum_atomic)
+        u_sum_atomic[I].value = 0
+        wt_sum_atomic[I].value = 0
+    end
 
-    @inbounds for I in CartesianIndices(X_mark)
+    @inbounds @threads for I in CartesianIndices(X_mark)
 
         # index of markers related to the grid
         i = floor(Int,(Y_mark[I])/Δy) + 1
@@ -102,19 +106,25 @@ function interpol_marker_to_nodes!(u, MIC, parameters)
         wt_nw = (1 - Δx_mark / Δx) * (Δy_mark / Δy)
         wt_ne = (Δx_mark / Δx) * (Δy_mark / Δy)
 
-        # compute sum
-        u_sum[is,jw] += u_mark[I] * wt_sw
-        u_sum[is,je] += u_mark[I] * wt_se
-        u_sum[in,jw] += u_mark[I] * wt_nw
-        u_sum[in,je] += u_mark[I] * wt_ne
+        # Use atomic_add! to safely update u_sum and wt_sum
+        atomic_add!(u_sum_atomic[is,jw], u_mark[I] * wt_sw)
+        atomic_add!(u_sum_atomic[is,je], u_mark[I] * wt_se)
+        atomic_add!(u_sum_atomic[in,jw], u_mark[I] * wt_nw)
+        atomic_add!(u_sum_atomic[in,je], u_mark[I] * wt_ne)
 
-        wt_sum[is,jw] += wt_sw
-        wt_sum[is,je] += wt_se
-        wt_sum[in,jw] += wt_nw
-        wt_sum[in,je] += wt_ne
+        atomic_add!(wt_sum_atomic[is,jw], wt_sw)
+        atomic_add!(wt_sum_atomic[is,je], wt_se)
+        atomic_add!(wt_sum_atomic[in,jw], wt_nw)
+        atomic_add!(wt_sum_atomic[in,je], wt_ne)
     end
 
-    @inbounds for I in CartesianIndices(size(u))
+    # Combine the atomic arrays into the final arrays
+    @inbounds @threads for I in eachindex(u_sum)
+        u_sum[I] = u_sum_atomic[I].value
+        wt_sum[I] = wt_sum_atomic[I].value
+    end
+
+    @inbounds @threads for I in CartesianIndices(size(u))
         if wt_sum[I] > 0
             u[I] = u_sum[I] / wt_sum[I]
         end

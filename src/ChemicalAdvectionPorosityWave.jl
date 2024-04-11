@@ -3,12 +3,15 @@ module ChemicalAdvectionPorosityWave
 using Logging: global_logger
 using TerminalLoggers: TerminalLogger
 using Reexport: @reexport
+using Base.Threads: @threads, Atomic, atomic_add!
+
 @reexport using Plots
 @reexport using Unitful
 @reexport using Parameters
 @reexport using Symbolics
 @reexport using OrdinaryDiffEq, DiffEqCallbacks, LinearSolve
 @reexport using BenchmarkTools
+
 
 # Write your package code here.
 include("solvers/two_phase_flow.jl")

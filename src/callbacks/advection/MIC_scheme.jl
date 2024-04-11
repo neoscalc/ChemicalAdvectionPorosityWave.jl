@@ -36,9 +36,12 @@ const THRESHOLD_FACTOR_DENSITY_REMOVE = 2.0
     vc_timestep::Tuple{Vector{Float64}, Vector{Float64}} = (similar(X_mark),similar(Z_mark))
     vs_timestep::Tuple{Vector{Float64}, Vector{Float64}} = (similar(X_mark),similar(Z_mark))
     v_timestep::Tuple{Vector{Float64}, Vector{Float64}} = (similar(X_mark),similar(Z_mark))
-    u_sum::Array{Float64, 3} = similar(u0)
-    wt_sum::Array{Float64, 3} = similar(u0)
+    u_sum::Array{Float64, 2} = similar(u0[:,:,1])
+    u_sum_atomic::Matrix{Atomic{Float64}} = [Atomic{Float64}(0.0) for _ in 1:size(u_sum,1), _ in 1:size(u_sum,2)]  # Assuming nx and nz are the dimensions of your 2D grid
+    wt_sum::Array{Float64, 2} = similar(u0[:,:,1])
+    wt_sum_atomic::Matrix{Atomic{Float64}} = [Atomic{Float64}(0.0) for _ in 1:size(wt_sum,1), _ in 1:size(wt_sum,2)]
     density_mark::Array{Float64, 2} = zeros(nz, nx)
+    density_mark_atomic::Matrix{Atomic{Int}} = [Atomic{Int}(0.0) for _ in 1:size(density_mark,1), _ in 1:size(density_mark,2)]
     algo_name::String = "MIC"
 end
 
@@ -63,7 +66,7 @@ function MIC_initialize_markers!(u_mark, u, MIC, parameters)
         setp = extrapolate(sitp, Periodic())
         # scaled interpolation with extrapolation on the boundaries
 
-        @inbounds for I = CartesianIndices(X_mark)
+        @inbounds @threads for I = CartesianIndices(X_mark)
 
             # index of the chemical element in u_mark
             nb_el = length(u_mark) ÷ length(X_mark)
@@ -74,18 +77,27 @@ function MIC_initialize_markers!(u_mark, u, MIC, parameters)
     end
 end
 
-function density_marker_per_cell!(density_mark, X_mark, Z_mark, xs_ad, zs_ad)
 
-    # reset density_cell
-    density_mark .= 0
+function density_marker_per_cell!(density_mark, density_mark_atomic, X_mark, Z_mark, xs_ad, zs_ad)
 
-    for I in CartesianIndices(density_mark)
+    # reset density_cell_atomic
+    @inbounds @threads for I in eachindex(density_mark_atomic)
+        density_mark_atomic[I].value = 0
+    end
+
+    @inbounds @threads for I in CartesianIndices(density_mark)
         i, j = Tuple(I)
         for k in axes(X_mark,1)
             if X_mark[k] >= xs_ad[j] && X_mark[k] <= xs_ad[j+1] && Z_mark[k] >= zs_ad[i] && Z_mark[k] <= zs_ad[i+1]
-                density_mark[i, j] += 1
+                # density_mark[i, j] += 1
+                atomic_add!(density_mark_atomic[I], 1)
             end
         end
+    end
+
+    # Copy the atomic values back to the density_mark array
+    @inbounds @threads for I in eachindex(density_mark, density_mark_atomic)
+        density_mark[I] = density_mark_atomic[I].value
     end
 end
 
@@ -258,15 +270,14 @@ end
 
 function reseeding_marker!(u_mark, X_mark, Z_mark, density_mark, MIC, parameters)
 
-    @unpack nx, nz, nx_marker, nz_marker, Lz, Lx = MIC
+    @unpack nx, nz, nx_marker, nz_marker, Lz, Lx, density_mark_atomic = MIC
     @unpack xs_ad, zs_ad, xs_ad_vec, zs_ad_vec = parameters
 
-    density_marker_per_cell!(density_mark, X_mark, Z_mark, xs_ad_vec, zs_ad_vec)
+    density_marker_per_cell!(density_mark, density_mark_atomic, X_mark, Z_mark, xs_ad_vec, zs_ad_vec)
 
     add_marker_per_cell!(u_mark, X_mark, Z_mark, density_mark, xs_ad, zs_ad, MIC)
     remove_marker_per_cell!(u_mark, X_mark, Z_mark, density_mark, xs_ad, zs_ad, MIC)
 end
-
 
 
 function interpol_velocity_MIC!(X_mark, Z_mark, v_staggered, v_centered, MIC, Δt, zs_ad, xs_ad, z_ad, x_ad, zs_ad_vec, xs_ad_vec)
@@ -285,7 +296,7 @@ function interpol_velocity_MIC!(X_mark, Z_mark, v_staggered, v_centered, MIC, Δ
     # interpolation
     setp_vsz = extrapolate(scale(interpolate(v_staggered[:z], BSpline(Cubic(Periodic(OnCell())))), zs_ad, x_ad), Periodic())
 
-    @inbounds for I = CartesianIndices(X_mark)
+    @inbounds @threads for I = CartesianIndices(X_mark)
         # interpolate velocities on the marker position from the pressure nodes
         vc_t_old[1][I] = setp_vcx(Z_mark[I], X_mark[I])
         vc_t_old[2][I] = setp_vcz(Z_mark[I], X_mark[I])
@@ -303,11 +314,12 @@ function interpol_velocity_MIC!(X_mark, Z_mark, v_staggered, v_centered, MIC, Δ
     X_mark_save .= X_mark
     Z_mark_save .= Z_mark
 
-    # Advect marker with previous velocity at half the time
-    X_mark .= X_mark .+ v_t_old[1] .* Δt ./ 2
-    Z_mark .= Z_mark .+ v_t_old[2] .* Δt ./ 2
+    @inbounds @threads for I in eachindex(X_mark)
+        X_mark[I] += v_t_old[1][I] * Δt * 0.5
+        Z_mark[I] += v_t_old[2][I] * Δt * 0.5
+    end
 
-    @inbounds for I = CartesianIndices(X_mark)
+    @inbounds @threads for I = CartesianIndices(X_mark)
         vc_timestep[1][I] = setp_vcx(Z_mark[I], X_mark[I])
         vc_timestep[2][I] = setp_vcz(Z_mark[I], X_mark[I])
 
@@ -320,14 +332,16 @@ function interpol_velocity_MIC!(X_mark, Z_mark, v_staggered, v_centered, MIC, Δ
     end
 
     # use new velocity to advect marker from the previous position
-    X_mark .= X_mark_save .+ v_timestep[1] .* Δt
-    Z_mark .= Z_mark_save .+ v_timestep[2] .* Δt
+    @inbounds @threads for I in eachindex(X_mark)
+        X_mark[I] = X_mark_save[I] + v_timestep[1][I] * Δt
+        Z_mark[I] = Z_mark_save[I] + v_timestep[2][I] * Δt
+    end
 
     X_ad = xs_ad_vec[end] - xs_ad_vec[1]
     Z_ad = zs_ad_vec[end] - zs_ad_vec[1]
 
     # apply periodic boundary condition
-    for I = CartesianIndices(X_mark)
+    @inbounds for I = CartesianIndices(X_mark)
         if X_mark[I] < xs_ad[1]
             X_mark[I] += X_ad
         elseif X_mark[I] > xs_ad[end]
@@ -346,7 +360,7 @@ function interpol_marker_to_nodes!(u, MIC, grid, parameters, z_ad_vec, x_ad_vec)
 
     @unpack nx, nz, Δx, Δz = grid;
     @unpack Δx_ad, Δz_ad = parameters;
-    @unpack u_mark, X_mark, Z_mark, u_sum, wt_sum = MIC
+    @unpack u_mark, X_mark, Z_mark, u_sum, wt_sum, u_sum_atomic, wt_sum_atomic = MIC
 
     for k = axes(u, 3)
 
@@ -354,8 +368,12 @@ function interpol_marker_to_nodes!(u, MIC, grid, parameters, z_ad_vec, x_ad_vec)
         u_sum .= 0
         wt_sum .= 0
 
-        #! Not thread safe
-        @inbounds for I in CartesianIndices(X_mark)
+        @inbounds @threads for I in eachindex(u_sum_atomic)
+            u_sum_atomic[I].value = 0
+            wt_sum_atomic[I].value = 0
+        end
+
+        @inbounds @threads for I in CartesianIndices(X_mark)
 
             # index of markers related to the grid
             i = floor(Int, (Z_mark[I] - z_ad_vec[1]) / Δz_ad) + 1
@@ -381,19 +399,25 @@ function interpol_marker_to_nodes!(u, MIC, grid, parameters, z_ad_vec, x_ad_vec)
             wt_nw = (1 - Δx_mark / Δx_ad) * (Δz_mark / Δz_ad)
             wt_ne = (Δx_mark / Δx_ad) * (Δz_mark / Δz_ad)
 
-            # compute sum
-            u_sum[is,jw] += u_mark[iu_mark] * wt_sw
-            u_sum[is,je] += u_mark[iu_mark] * wt_se
-            u_sum[in,jw] += u_mark[iu_mark] * wt_nw
-            u_sum[in,je] += u_mark[iu_mark] * wt_ne
+            # Use atomic_add! to safely update u_sum and wt_sum
+            atomic_add!(u_sum_atomic[is,jw], u_mark[iu_mark] * wt_sw)
+            atomic_add!(u_sum_atomic[is,je], u_mark[iu_mark] * wt_se)
+            atomic_add!(u_sum_atomic[in,jw], u_mark[iu_mark] * wt_nw)
+            atomic_add!(u_sum_atomic[in,je], u_mark[iu_mark] * wt_ne)
 
-            wt_sum[is,jw] += wt_sw
-            wt_sum[is,je] += wt_se
-            wt_sum[in,jw] += wt_nw
-            wt_sum[in,je] += wt_ne
+            atomic_add!(wt_sum_atomic[is,jw], wt_sw)
+            atomic_add!(wt_sum_atomic[is,je], wt_se)
+            atomic_add!(wt_sum_atomic[in,jw], wt_nw)
+            atomic_add!(wt_sum_atomic[in,je], wt_ne)
         end
 
-        @inbounds for I in CartesianIndices(wt_sum)
+        # Copy the atomic values back to the u_sum and wt_sum arrays
+        @inbounds @threads for I in eachindex(u_sum)
+            u_sum[I] = u_sum_atomic[I].value
+            wt_sum[I] = wt_sum_atomic[I].value
+        end
+
+        @inbounds @threads for I in CartesianIndices(wt_sum)
             i, j = Tuple(I)
             if wt_sum[I] > 0
                 u[i,j,k] = u_sum[I] / wt_sum[I]
@@ -414,5 +438,4 @@ function MIC!(u, v_staggered, v_centered, MIC, parameters, Δt, grid)
 
     # Perform the interpolation from the markers to the grid
     interpol_marker_to_nodes!(u, MIC, grid, parameters, z_ad_vec, x_ad_vec)
-
 end
