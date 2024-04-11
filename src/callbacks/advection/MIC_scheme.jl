@@ -275,7 +275,7 @@ function reseeding_marker!(u_mark, X_mark, Z_mark, density_mark, MIC, parameters
     @unpack nx, nz, nx_marker, nz_marker, Lz, Lx = MIC
     @unpack xs_ad, zs_ad, xs_ad_vec, zs_ad_vec = parameters
 
-    # density_marker_per_cell!(density_mark, X_mark, Z_mark, xs_ad_vec, zs_ad_vec)
+    density_marker_per_cell!(density_mark, X_mark, Z_mark, xs_ad_vec, zs_ad_vec)
 
     add_marker_per_cell!(u_mark, X_mark, Z_mark, density_mark, xs_ad_vec, zs_ad_vec, MIC)
     remove_marker_per_cell!(u_mark, X_mark, Z_mark, density_mark, xs_ad_vec, zs_ad_vec, MIC)
