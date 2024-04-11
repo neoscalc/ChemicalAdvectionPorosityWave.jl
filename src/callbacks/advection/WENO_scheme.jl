@@ -41,13 +41,13 @@ function WENO_u_upwind(u1, u2, u3, u4, u5, method)
 
     ϵ = 1e-6
 
-    if method == "JS"
+    if method == :JS
         α0L = d0L / (β0 + ϵ)^2
         α1L = d1L / (β1 + ϵ)^2
         α2L = d2L / (β2 + ϵ)^2
 
     # Borges et al. 2008 formulation
-    elseif method == "Z"
+    elseif method == :Z
         α0L = d0L * (1 + (τ / (β0 + ϵ))^2)
         α1L = d1L * (1 + (τ / (β1 + ϵ))^2)
         α2L = d2L * (1 + (τ / (β2 + ϵ))^2)
@@ -80,7 +80,7 @@ function WENO_u_downwind(u1, u2, u3, u4, u5, method)
     β2 = 13/12 * (u3 - 2*u4 + u5)^2 + 1/4 * (3*u3 - 4*u4 + u5)^2
 
     # Borges et al. 2008 formulation
-    if method == "Z"
+    if method == :Z
         τ = abs(β0 - β2)
     end
 
@@ -92,14 +92,14 @@ function WENO_u_downwind(u1, u2, u3, u4, u5, method)
     ϵ = 1e-6
 
     # classical approach
-    if method == "JS"
+    if method == :JS
 
         α0R = d0R / (β0 + ϵ)^2
         α1R = d1R / (β1 + ϵ)^2
         α2R = d2R / (β2 + ϵ)^2
 
     # Borges et al. 2008 formulation
-    elseif method == "Z"
+    elseif method == :Z
 
         α0R = d0R * (1 + (τ / (β0 + ϵ))^2)
         α1R = d1R * (1 + (τ / (β1 + ϵ))^2)

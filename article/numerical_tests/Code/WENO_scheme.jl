@@ -1,5 +1,6 @@
 module WENO_scheme
 
+import Base.Threads.@threads
 using Parameters
 
 @inline function limit_periodic(a, n)
@@ -17,7 +18,7 @@ function WENO_u_upwind(u1, u2, u3, u4, u5, method)
     β2 = 13/12 * (u3 - 2*u4 + u5)^2 + 1/4 * (3*u3 - 4*u4 + u5)^2
 
     # Borges et al. 2008 formulation
-    if method == "Z"
+    if method == :Z
         τ = abs(β0 - β2)
     end
 
@@ -28,13 +29,13 @@ function WENO_u_upwind(u1, u2, u3, u4, u5, method)
 
     ϵ = 1e-6
 
-    if method == "JS"
+    if method == :JS
         α0L = d0L / (β0 + ϵ)^2
         α1L = d1L / (β1 + ϵ)^2
         α2L = d2L / (β2 + ϵ)^2
 
     # Borges et al. 2008 formulation
-    elseif method == "Z"
+    elseif method == :Z
         α0L = d0L * (1 + (τ / (β0 + ϵ))^2)
         α1L = d1L * (1 + (τ / (β1 + ϵ))^2)
         α2L = d2L * (1 + (τ / (β2 + ϵ))^2)
@@ -67,7 +68,7 @@ function WENO_u_downwind(u1, u2, u3, u4, u5, method)
     β2 = 13/12 * (u3 - 2*u4 + u5)^2 + 1/4 * (3*u3 - 4*u4 + u5)^2
 
     # Borges et al. 2008 formulation
-    if method == "Z"
+    if method == :Z
         τ = abs(β0 - β2)
     end
 
@@ -79,14 +80,14 @@ function WENO_u_downwind(u1, u2, u3, u4, u5, method)
     ϵ = 1e-6
 
     # classical approach
-    if method == "JS"
+    if method == :JS
 
         α0R = d0R / (β0 + ϵ)^2
         α1R = d1R / (β1 + ϵ)^2
         α2R = d2R / (β2 + ϵ)^2
 
     # Borges et al. 2008 formulation
-    elseif method == "Z"
+    elseif method == :Z
 
         α0R = d0R * (1 + (τ / (β0 + ϵ))^2)
         α1R = d1R * (1 + (τ / (β1 + ϵ))^2)
@@ -130,7 +131,7 @@ end
 
 
 function WENO_flux_upwind_y!(fB, u, nx, ny, method)
-    @inbounds for I = CartesianIndices((ny, nx))
+    @inbounds @threads for I = CartesianIndices((ny, nx))
         i,j = Tuple(I)
         iw, iww = limit_periodic(i-1, ny), limit_periodic(i-2, ny)
         ie, iee = limit_periodic(i+1, ny), limit_periodic(i+2, ny)
@@ -146,7 +147,7 @@ function WENO_flux_upwind_y!(fB, u, nx, ny, method)
 end
 
 function WENO_flux_downwind_x!(fR, u, nx, ny, method)
-    @inbounds for I = CartesianIndices((ny, nx))
+    @inbounds @threads for I = CartesianIndices((ny, nx))
         i,j = Tuple(I)
         jw, jww = limit_periodic(j-1, nx), limit_periodic(j-2, nx)
         je, jee = limit_periodic(j+1, nx), limit_periodic(j+2, nx)
@@ -162,7 +163,7 @@ function WENO_flux_downwind_x!(fR, u, nx, ny, method)
 end
 
 function WENO_flux_downwind_y!(fT, u, nx, ny, method)
-    @inbounds for I = CartesianIndices((ny, nx))
+    @inbounds @threads for I = CartesianIndices((ny, nx))
         i,j = Tuple(I)
         iw, iww = limit_periodic(i-1, ny), limit_periodic(i-2, ny)
         ie, iee = limit_periodic(i+1, ny), limit_periodic(i+2, ny)
@@ -189,7 +190,7 @@ function rhs!(u, vx, vy, WENO, parameters, method)
     WENO_flux_upwind_y!(fB, u, nx, ny, method)
     WENO_flux_downwind_y!(fT, u, nx, ny, method)
 
-    @inbounds for I = CartesianIndices((ny, nx))
+    @inbounds @threads for I = CartesianIndices((ny, nx))
         i,j = Tuple(I)
 
         jw, je = limit_periodic(j-1, nx), limit_periodic(j+1, nx)
@@ -203,26 +204,26 @@ function rhs!(u, vx, vy, WENO, parameters, method)
 end
 
 
-function WENO_scheme!(u, v, WENO, parameters; method="Z")
+function WENO_scheme!(u, v, WENO, parameters; method=:Z)
 
     @unpack Δx, Δy, nx, ny, Δt = parameters
     @unpack ut, r = WENO
 
     rhs!(u, v[1], v[2], WENO, parameters, method)
 
-    @inbounds for I = CartesianIndices((ny, nx))
+    @inbounds @threads for I = CartesianIndices((ny, nx))
         ut[I] = u[I] - Δt * r[I]
     end
 
     rhs!(ut, v[1], v[2], WENO, parameters, method)
 
-    @inbounds for I = CartesianIndices((ny, nx))
+    @inbounds @threads for I = CartesianIndices((ny, nx))
         ut[I] = 0.75 * u[I] + 0.25 * ut[I] - 0.25 * Δt * r[I]
     end
 
     rhs!(ut, v[1], v[2], WENO, parameters, method)
 
-    @inbounds for I = CartesianIndices((ny, nx))
+    @inbounds @threads for I = CartesianIndices((ny, nx))
         u[I] = 1.0/3.0 * u[I] + 2.0/3.0 * ut[I] - (2.0/3.0) * Δt * r[I]
     end
 

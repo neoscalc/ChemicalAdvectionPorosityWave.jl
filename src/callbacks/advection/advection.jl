@@ -38,12 +38,12 @@ function advection_call_func(u, t, integrator)
         @unpack vc_f = advection
         velocity_to_center!(vc_f, v_f)
 
-        WENO_scheme!(compo_f, vc_f, advection, grid, parameters, Δt; method="JS")
+        WENO_scheme!(compo_f, vc_f, advection, grid, parameters, Δt; method=:JS)
     elseif algo_name == "Semi-Lagrangian"
         @unpack vc_previous, vc_f = advection
         velocity_to_center!(vc_f, v_f)
 
-        semi_lagrangian!(compo_f, advection, vc_f, vc_previous, Δt, grid, parameters, ϕ, ϕ_ini; method="quasi-monotone")
+        semi_lagrangian!(compo_f, advection, vc_f, vc_previous, Δt, grid, parameters, ϕ, ϕ_ini; method=:quasi_monotone)
 
         # save previous velocity
         vc_previous[:x] .= vc_f[:x]
