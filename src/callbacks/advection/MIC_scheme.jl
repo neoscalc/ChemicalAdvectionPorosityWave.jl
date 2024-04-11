@@ -41,7 +41,6 @@ const THRESHOLD_FACTOR_DENSITY_REMOVE = 2.0
     wt_sum::Array{Float64, 2} = similar(u0[:,:,1])
     wt_sum_atomic::Matrix{Atomic{Float64}} = [Atomic{Float64}(0.0) for _ in 1:size(wt_sum,1), _ in 1:size(wt_sum,2)]
     density_mark::Array{Float64, 2} = zeros(nz, nx)
-    density_mark_atomic::Matrix{Atomic{Int}} = [Atomic{Int}(0.0) for _ in 1:size(density_mark,1), _ in 1:size(density_mark,2)]
     algo_name::String = "MIC"
 end
 
@@ -78,26 +77,27 @@ function MIC_initialize_markers!(u_mark, u, MIC, parameters)
 end
 
 
-function density_marker_per_cell!(density_mark, density_mark_atomic, X_mark, Z_mark, xs_ad, zs_ad)
-
-    # reset density_cell_atomic
-    @inbounds @threads for I in eachindex(density_mark_atomic)
-        density_mark_atomic[I].value = 0
-    end
+function density_marker_per_cell!(density_mark, X_mark, Z_mark, xs_ad, zs_ad)
+    # Create a list of all markers and sort it
+    markers = sort(collect(zip(X_mark, Z_mark)), by = x -> (x[1], x[2]))
 
     @inbounds @threads for I in CartesianIndices(density_mark)
         i, j = Tuple(I)
-        for k in axes(X_mark,1)
-            if X_mark[k] >= xs_ad[j] && X_mark[k] <= xs_ad[j+1] && Z_mark[k] >= zs_ad[i] && Z_mark[k] <= zs_ad[i+1]
-                # density_mark[i, j] += 1
-                atomic_add!(density_mark_atomic[I], 1)
+
+        # Use binary search to find the range of markers within the cell's boundaries
+        lower = searchsortedfirst(markers, (xs_ad[j], zs_ad[i]), by = x -> (x[1], x[2]))
+        upper = searchsortedlast(markers, (xs_ad[j+1], zs_ad[i+1]), by = x -> (x[1], x[2]))
+
+        # Count the markers within the cell
+        count = 0
+        for k in lower:upper
+            x, z = markers[k]
+            if x >= xs_ad[j] && x <= xs_ad[j+1] && z >= zs_ad[i] && z <= zs_ad[i+1]
+                count += 1
             end
         end
-    end
 
-    # Copy the atomic values back to the density_mark array
-    @inbounds @threads for I in eachindex(density_mark, density_mark_atomic)
-        density_mark[I] = density_mark_atomic[I].value
+        density_mark[I] = count
     end
 end
 
@@ -270,10 +270,10 @@ end
 
 function reseeding_marker!(u_mark, X_mark, Z_mark, density_mark, MIC, parameters)
 
-    @unpack nx, nz, nx_marker, nz_marker, Lz, Lx, density_mark_atomic = MIC
+    @unpack nx, nz, nx_marker, nz_marker, Lz, Lx = MIC
     @unpack xs_ad, zs_ad, xs_ad_vec, zs_ad_vec = parameters
 
-    density_marker_per_cell!(density_mark, density_mark_atomic, X_mark, Z_mark, xs_ad_vec, zs_ad_vec)
+    density_marker_per_cell!(density_mark, X_mark, Z_mark, xs_ad_vec, zs_ad_vec)
 
     add_marker_per_cell!(u_mark, X_mark, Z_mark, density_mark, xs_ad, zs_ad, MIC)
     remove_marker_per_cell!(u_mark, X_mark, Z_mark, density_mark, xs_ad, zs_ad, MIC)
