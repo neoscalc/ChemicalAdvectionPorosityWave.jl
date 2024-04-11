@@ -2,6 +2,10 @@ using Parameters
 using Interpolations
 import StatsBase:sample
 
+const THRESHOLD_FACTOR_DENSITY_ADD = 0.5
+const THRESHOLD_FACTOR_DENSITY_REMOVE = 2.0
+
+
 @with_kw struct MICScheme
     u0::Array{Float64, 3}
     nx::Int
@@ -10,14 +14,19 @@ import StatsBase:sample
     Lz::Float64
     Δx::Float64
     Δz::Float64
-    nx_marker::Int = (nx+1)*5
-    nz_marker::Int = (nz+1)*5
+    multiplier::Int = 5
+    mark_per_cell::Int = multiplier*multiplier
+    mark_per_cell_array::Array{Float64, 1} = zeros(mark_per_cell)
+    mark_per_cell_array_el::Array{Float64, 1} = zeros(mark_per_cell*size(u0,3))
+    nx_marker::Int = (nx+1)*multiplier
+    nz_marker::Int = (nz+1)*multiplier
     x_mark::Array{Float64, 1} = collect(range(0, length=nx_marker, stop= Lx))
     z_mark::Array{Float64, 1} = collect(range(0, length=nz_marker, stop= Lz))
     X_mark::Array{Float64, 1} = (x_mark' .* ones(length(z_mark)))[:]
     Z_mark::Array{Float64, 1} = (ones(length(x_mark))' .* z_mark)[:]
     X_mark_save::Array{Float64, 1} = similar(X_mark)
     Z_mark_save::Array{Float64, 1} = similar(Z_mark)
+    XZ_mark_cell::Array{Float64, 1} = ones(multiplier*multiplier)
     norm_mark::Array{Float64, 1} = similar(X_mark)
     u_mark::Array{Float64, 1} = zeros(length(X_mark), size(u0,3))[:]  # temporary array
     vc_f::NamedTuple{(:x, :z), Tuple{Matrix{Float64}, Matrix{Float64}}} = (x=zeros(nz, nx),z=zeros(nz, nx))
@@ -41,18 +50,16 @@ function MIC_convert_adimensional(MIC, compaction_l)
 end
 
 
-function MIC_initialize_markers!(u_mark, u, MIC, compaction_l)
+function MIC_initialize_markers!(u_mark, u, MIC, parameters)
 
     @unpack X_mark, Z_mark, Δx, Δz, Lx, Lz, nx, nz = MIC
-
-    zc_ad = range((Δz/2) / compaction_l, length=nz, stop= (Lz-Δz/2) / compaction_l)
-    xc_ad = range((Δx/2) / compaction_l, length=nx, stop= (Lx-Δx/2) / compaction_l)
+    @unpack x_ad, z_ad = parameters
 
     for k = axes(u,3)
         # interpolation
         itp = interpolate(u[:,:,k], BSpline(Linear(Periodic(OnCell()))))
         # scaled interpolation
-        sitp = scale(itp, zc_ad, xc_ad)
+        sitp = scale(itp, z_ad, x_ad)
         setp = extrapolate(sitp, Periodic())
         # scaled interpolation with extrapolation on the boundaries
 
@@ -67,7 +74,7 @@ function MIC_initialize_markers!(u_mark, u, MIC, compaction_l)
     end
 end
 
-function density_marker_per_cell!(density_mark, X_mark, Z_mark, x, z)
+function density_marker_per_cell!(density_mark, X_mark, Z_mark, xs_ad, zs_ad)
 
     # reset density_cell
     density_mark .= 0
@@ -75,45 +82,50 @@ function density_marker_per_cell!(density_mark, X_mark, Z_mark, x, z)
     for I in CartesianIndices(density_mark)
         i, j = Tuple(I)
         for k in axes(X_mark,1)
-            if X_mark[k] >= x[j] && X_mark[k] <= x[j+1] && Z_mark[k] >= z[i] && Z_mark[k] <= z[i+1]
+            if X_mark[k] >= xs_ad[j] && X_mark[k] <= xs_ad[j+1] && Z_mark[k] >= zs_ad[i] && Z_mark[k] <= zs_ad[i+1]
                 density_mark[i, j] += 1
             end
         end
     end
 end
 
-function add_marker_per_cell!(u_mark, X_mark, Z_mark, density_mark, x, z, MIC)
+function calculate_indices(index, nb_el)
+    start_index = nb_el * (index - 1) + 1
+    end_index = start_index + nb_el - 1
+    return start_index, end_index
+end
 
-    @unpack nx, nz, nx_marker, nz_marker, X_mark_save, Z_mark_save, vc_t_old, vs_t_old, v_t_old, vc_timestep, vs_timestep, v_timestep, norm_mark = MIC
+function add_marker_per_cell!(u_mark, X_mark, Z_mark, density_mark, xs_ad, zs_ad, MIC)
+
+    @unpack nx, nz, nx_marker, nz_marker, X_mark_save, Z_mark_save, vc_t_old, vs_t_old, v_t_old, vc_timestep, vs_timestep, v_timestep, norm_mark, XZ_mark_cell, mark_per_cell, mark_per_cell_array, mark_per_cell_array_el, u0 = MIC
 
     @inbounds for I in CartesianIndices(density_mark)
         i, j = Tuple(I)
-        if density_mark[i, j] < round(0.25*nx_marker*nz_marker / (nx*nz))
+        if density_mark[i, j] < round(THRESHOLD_FACTOR_DENSITY_ADD*nx_marker*nz_marker / (nx*nz))
 
             index_previous = size(X_mark, 1)
-            nb_el = length(u_mark) ÷ length(X_mark)
-            mark_per_cell = round(Int, nx_marker/nx)*round(Int, nz_marker/nz)
-
+            nb_el = size(u0, 3)
 
             # add evenly spaced markers in the cell on all arrays
-            append!(Z_mark, ((range(z[i], length=round(Int, nz_marker/nz), stop= z[i+1]))' .*  ones(round(Int,nx_marker/nx)))[:])
-            append!(X_mark, (range(x[j], length=round(Int, nx_marker/nx), stop= x[j+1]) .*  ones(round(Int,nz_marker/nz))')[:])
-            append!(Z_mark_save, zeros(mark_per_cell))
-            append!(X_mark_save, zeros(mark_per_cell))
-            append!(vc_t_old[1], zeros(mark_per_cell))
-            append!(vs_t_old[1], zeros(mark_per_cell))
-            append!(v_t_old[1], zeros(mark_per_cell))
-            append!(vc_timestep[1], zeros(mark_per_cell))
-            append!(vs_timestep[1], zeros(mark_per_cell))
-            append!(v_timestep[1], zeros(mark_per_cell))
-            append!(vc_t_old[2], zeros(mark_per_cell))
-            append!(vs_t_old[2], zeros(mark_per_cell))
-            append!(v_t_old[2], zeros(mark_per_cell))
-            append!(vc_timestep[2], zeros(mark_per_cell))
-            append!(vs_timestep[2], zeros(mark_per_cell))
-            append!(v_timestep[2], zeros(mark_per_cell))
-            append!(norm_mark, zeros(mark_per_cell))
-            append!(u_mark, zeros(mark_per_cell * (nb_el)))
+            XZ_mark_cell .= ((range(zs_ad[i], length=round(Int, nz_marker/nz), stop= zs_ad[i+1]))' .*  ones(round(Int,nx_marker/nx)))[:]
+            append!(Z_mark, XZ_mark_cell)
+            XZ_mark_cell .= (range(xs_ad[j], length=round(Int, nx_marker/nx), stop= xs_ad[j+1]) .*  ones(round(Int,nz_marker/nz))')[:]
+            append!(X_mark, (range(xs_ad[j], length=round(Int, nx_marker/nx), stop= xs_ad[j+1]) .*  ones(round(Int,nz_marker/nz))')[:])
+            append!(Z_mark_save, mark_per_cell_array)
+            append!(X_mark_save, mark_per_cell_array)
+            append!(vc_t_old[1], mark_per_cell_array)
+            append!(vs_t_old[1], mark_per_cell_array)
+            append!(v_t_old[1], mark_per_cell_array)
+            append!(vc_timestep[1], mark_per_cell_array)
+            append!(vs_timestep[1], mark_per_cell_array)
+            append!(v_timestep[1], mark_per_cell_array)
+            append!(vc_t_old[2], mark_per_cell_array)
+            append!(vs_t_old[2], mark_per_cell_array)
+            append!(v_t_old[2], mark_per_cell_array)
+            append!(vc_timestep[2], mark_per_cell_array)
+            append!(vs_timestep[2], mark_per_cell_array)
+            append!(v_timestep[2], mark_per_cell_array)
+            append!(u_mark, mark_per_cell_array_el)
 
             prev_X_mark = @view X_mark[1:index_previous]
             prev_Z_mark = @view Z_mark[1:index_previous]
@@ -122,14 +134,13 @@ function add_marker_per_cell!(u_mark, X_mark, Z_mark, density_mark, x, z, MIC)
             new_Z_mark = @view Z_mark[index_previous+1:end]
 
             @inbounds for k in axes(new_X_mark, 1)
-                norm_mark[1:index_previous] .= (prev_X_mark .- new_X_mark[k]).^2 .+ (prev_Z_mark .- new_Z_mark[k]).^2
+
+                norm_mark .= (prev_X_mark .- new_X_mark[k]).^2 .+ (prev_Z_mark .- new_Z_mark[k]).^2
                 index_minimum = argmin(norm_mark)
 
                 # replace values in u_mark with the closest marker
-                index_u_mark_start = nb_el * ((index_previous+k) - 1) + 1
-                index_u_mark_end = nb_el * ((index_previous+k) - 1) + nb_el
-                index_u_mark_start_near = nb_el * (index_minimum - 1) + 1
-                index_u_mark_end_near = nb_el * (index_minimum - 1) + nb_el
+                index_u_mark_start, index_u_mark_end = calculate_indices(index_previous+k, nb_el)
+                index_u_mark_start_near, index_u_mark_end_near = calculate_indices(index_minimum, nb_el)
 
                 u_mark[index_u_mark_start:index_u_mark_end] .= u_mark[index_u_mark_start_near:index_u_mark_end_near]
             end
@@ -138,11 +149,15 @@ function add_marker_per_cell!(u_mark, X_mark, Z_mark, density_mark, x, z, MIC)
             index_delete::Vector{Int64} = []
 
             @inbounds for k in axes(prev_X_mark, 1)
-                if prev_Z_mark[k] >= z[i] && prev_Z_mark[k] <= z[i+1] && prev_X_mark[k] >= x[j] && prev_X_mark[k] <= x[j+1]
+                if prev_Z_mark[k] >= zs_ad[i] && prev_Z_mark[k] <= zs_ad[i+1] && prev_X_mark[k] >= xs_ad[j] && prev_X_mark[k] <= xs_ad[j+1]
                     push!(index_delete, k)
                 end
             end
 
+            # now can append norm_mark to the previous norm_mark
+            append!(norm_mark, mark_per_cell_array)
+
+            # delete all previous markers inside this cell
             deleteat!(X_mark, index_delete)
             deleteat!(Z_mark, index_delete)
             deleteat!(Z_mark_save, index_delete)
@@ -161,11 +176,14 @@ function add_marker_per_cell!(u_mark, X_mark, Z_mark, density_mark, x, z, MIC)
             deleteat!(v_timestep[2], index_delete)
             deleteat!(norm_mark, index_delete)
 
-            # index of the chemical element in u_mark
-            index_delete_compo::Vector{Int64} = []
-            @inbounds for k in index_delete
-                @inbounds for l in 1:nb_el
-                    push!(index_delete_compo, nb_el * (k - 1) + l)
+            # Preallocate index_delete_compo
+            index_delete_compo = Vector{Int64}(undef, nb_el * length(index_delete))
+
+            @inbounds for (i, k) in enumerate(index_delete)
+                for l in 1:nb_el
+                    # Calculate the index in the preallocated array
+                    index = nb_el * (i - 1) + l
+                    index_delete_compo[index] = nb_el * (k - 1) + l
                 end
             end
 
@@ -177,15 +195,13 @@ end
 
 function remove_marker_per_cell!(u_mark, X_mark, Z_mark, density_mark, x, z, MIC)
 
-    @unpack nx, nz, nx_marker, nz_marker, X_mark_save, Z_mark_save, vc_t_old, vs_t_old, v_t_old, vc_timestep, vs_timestep, v_timestep, norm_mark = MIC
+    @unpack nx, nz, nx_marker, nz_marker, X_mark_save, Z_mark_save, vc_t_old, vs_t_old, v_t_old, vc_timestep, vs_timestep, v_timestep, norm_mark, u0 = MIC
 
     @inbounds for I in CartesianIndices(density_mark)
         i, j = Tuple(I)
-        if density_mark[i, j] > round(2.0*nx_marker*nz_marker / (nx*nz))
+        if density_mark[i, j] > round(THRESHOLD_FACTOR_DENSITY_REMOVE*nx_marker*nz_marker / (nx*nz))
 
-            index_previous = size(X_mark, 1)
-            nb_el = length(u_mark) ÷ length(X_mark)
-            mark_per_cell = round(Int, nx_marker/nx)*round(Int, nz_marker/nz)
+            nb_el = size(u0, 3)
 
             # delete all previous markers inside this cell
             index_delete::Vector{Int64} = []
@@ -223,11 +239,14 @@ function remove_marker_per_cell!(u_mark, X_mark, Z_mark, density_mark, x, z, MIC
             deleteat!(v_timestep[2], index_delete_choosen)
             deleteat!(norm_mark, index_delete_choosen)
 
-            # index of the chemical element in u_mark
-            index_delete_compo::Vector{Int64} = []
-            @inbounds for k in index_delete_choosen
-                @inbounds for l in 1:nb_el
-                    push!(index_delete_compo, nb_el * (k - 1) + l)
+            # Preallocate index_delete_compo
+            index_delete_compo = Vector{Int64}(undef, nb_el * length(index_delete_choosen))
+
+            @inbounds for (i, k) in enumerate(index_delete_choosen)
+                for l in 1:nb_el
+                    # Calculate the index in the preallocated array
+                    index = nb_el * (i - 1) + l
+                    index_delete_compo[index] = nb_el * (k - 1) + l
                 end
             end
 
@@ -237,26 +256,28 @@ function remove_marker_per_cell!(u_mark, X_mark, Z_mark, density_mark, x, z, MIC
 end
 
 
-
-function reseeding_marker!(u_mark, X_mark, Z_mark, density_mark, MIC, compaction_l)
+function reseeding_marker!(u_mark, X_mark, Z_mark, density_mark, MIC, parameters)
 
     @unpack nx, nz, nx_marker, nz_marker, Lz, Lx = MIC
+    @unpack xs_ad, zs_ad, xs_ad_vec, zs_ad_vec = parameters
 
-    z_ad = range(0, length=nz+1, stop= Lz / compaction_l)
-    x_ad = range(0, length=nx+1, stop= Lx / compaction_l)
+    density_marker_per_cell!(density_mark, X_mark, Z_mark, xs_ad_vec, zs_ad_vec)
 
-    density_marker_per_cell!(density_mark, X_mark, Z_mark, x_ad, z_ad)
+    # l = @layout [a b]
 
-    # @show maximum(density_mark)
-    # @show minimum(density_mark)
+    # p1 = heatmap(grid.x*1e-3, grid.z*1e-3, compo_f[:,:,1],  xlim=(0, last(grid.x)*1e-3), ylim=(0, last(grid.z)*1e-3), title="wt% of SiO2", ylabel="Distance (km)",xlabel="Distance (km)", c = cgrad(:thermal, rev = true))
 
-    add_marker_per_cell!(u_mark, X_mark, Z_mark, density_mark, x_ad, z_ad, MIC)
-    remove_marker_per_cell!(u_mark, X_mark, Z_mark, density_mark, x_ad, z_ad, MIC)
+    # p2 = heatmap(grid.x*1e-3, grid.z*1e-3, density_mark,  xlim=(0, last(grid.x)*1e-3), ylim=(0, last(grid.z)*1e-3), title="Density Marker", xlabel="Distance (km)", c = :viridis)
+    # display(plot(p1, p2, layout = l))
+
+
+    add_marker_per_cell!(u_mark, X_mark, Z_mark, density_mark, xs_ad, zs_ad, MIC)
+    remove_marker_per_cell!(u_mark, X_mark, Z_mark, density_mark, xs_ad, zs_ad, MIC)
 end
 
 
 
-function interpol_velocity_MIC!(X_mark, Z_mark, v_staggered, v_centered, MIC, Δt, zs_ad, xs_ad, z_ad, x_ad)
+function interpol_velocity_MIC!(X_mark, Z_mark, v_staggered, v_centered, MIC, Δt, zs_ad, xs_ad, z_ad, x_ad, zs_ad_vec, xs_ad_vec)
 
     @unpack nx_marker, nz_marker, x_mark, z_mark, X_mark_save, Z_mark_save, vc_t_old, vs_t_old, v_t_old, vc_timestep, vs_timestep, v_timestep = MIC
 
@@ -266,11 +287,6 @@ function interpol_velocity_MIC!(X_mark, Z_mark, v_staggered, v_centered, MIC, Δ
     # interpolation
     setp_vcz = extrapolate(scale(interpolate(v_centered[:z], BSpline(Cubic(Periodic(OnCell())))), z_ad, x_ad), Periodic())
 
-    for I = CartesianIndices(X_mark)
-        vc_t_old[1][I] = setp_vcx(Z_mark[I], X_mark[I])
-        vc_t_old[2][I] = setp_vcz(Z_mark[I], X_mark[I])
-    end
-
     # interpolate velocities on the velocity nodes position
     setp_vsx = extrapolate(scale(interpolate(v_staggered[:x], BSpline(Cubic(Periodic(OnCell())))), z_ad, xs_ad), Periodic())
 
@@ -278,10 +294,15 @@ function interpol_velocity_MIC!(X_mark, Z_mark, v_staggered, v_centered, MIC, Δ
     setp_vsz = extrapolate(scale(interpolate(v_staggered[:z], BSpline(Cubic(Periodic(OnCell())))), zs_ad, x_ad), Periodic())
 
     @inbounds for I = CartesianIndices(X_mark)
+        # interpolate velocities on the marker position from the pressure nodes
+        vc_t_old[1][I] = setp_vcx(Z_mark[I], X_mark[I])
+        vc_t_old[2][I] = setp_vcz(Z_mark[I], X_mark[I])
+
+        # interpolate velocities on the velocity nodes from the velocity nodes
         vs_t_old[1][I] = setp_vsx(Z_mark[I], X_mark[I])
         vs_t_old[2][I] = setp_vsz(Z_mark[I], X_mark[I])
 
-        # use LinP interpolation scheme (see Gerya 2019)
+        # use LinP interpolation scheme (see Gerya 2019) on the marker position at the previous timestep
         v_t_old[1][I] = 2/3 * vs_t_old[1][I] + 1/3 * vc_t_old[1][I]
         v_t_old[2][I] = 2/3 * vs_t_old[2][I] + 1/3 * vc_t_old[2][I]
     end
@@ -290,9 +311,9 @@ function interpol_velocity_MIC!(X_mark, Z_mark, v_staggered, v_centered, MIC, Δ
     X_mark_save .= X_mark
     Z_mark_save .= Z_mark
 
-    # Advect marker with previous velocity
-    X_mark .= X_mark .+ v_t_old[1] .* Δt
-    Z_mark .= Z_mark .+ v_t_old[2] .* Δt
+    # Advect marker with previous velocity at half the time
+    X_mark .= X_mark .+ v_t_old[1] .* Δt ./ 2
+    Z_mark .= Z_mark .+ v_t_old[2] .* Δt ./ 2
 
     @inbounds for I = CartesianIndices(X_mark)
         vc_timestep[1][I] = setp_vcx(Z_mark[I], X_mark[I])
@@ -306,21 +327,12 @@ function interpol_velocity_MIC!(X_mark, Z_mark, v_staggered, v_centered, MIC, Δ
         v_timestep[2][I] = 2/3 * vs_timestep[2][I] + 1/3 * vc_timestep[2][I]
     end
 
-    # Advect marker with fixed point velocity
-    if !iszero(v_t_old[1])
-        X_mark .= X_mark_save .+ (v_t_old[1] .+ v_timestep[1]) .* 0.5 .* Δt
-    else
-        X_mark .= X_mark_save .+ v_timestep[1] .* Δt
-    end
+    # use new velocity to advect marker from the previous position
+    X_mark .= X_mark_save .+ v_timestep[1] .* Δt
+    Z_mark .= Z_mark_save .+ v_timestep[2] .* Δt
 
-    if !iszero(v_t_old[2])
-        Z_mark .= Z_mark_save .+ (v_t_old[2] .+ v_timestep[2]) .* 0.5 .* Δt
-    else
-        Z_mark .= Z_mark_save .+ v_timestep[2] .* Δt
-    end
-
-    X_ad = xs_ad[end] - xs_ad[1]
-    Z_ad = zs_ad[end] - zs_ad[1]
+    X_ad = xs_ad_vec[end] - xs_ad_vec[1]
+    Z_ad = zs_ad_vec[end] - zs_ad_vec[1]
 
     # apply periodic boundary condition
     for I = CartesianIndices(X_mark)
@@ -406,7 +418,7 @@ function MIC!(u, v_staggered, v_centered, MIC, parameters, Δt, grid)
     @unpack X_mark, Z_mark = MIC
 
     # Interpol velocity on markers' position
-    interpol_velocity_MIC!(X_mark, Z_mark, v_staggered, v_centered, MIC, Δt, zs_ad, xs_ad, z_ad, x_ad)
+    interpol_velocity_MIC!(X_mark, Z_mark, v_staggered, v_centered, MIC, Δt, zs_ad, xs_ad, z_ad, x_ad, zs_ad_vec, xs_ad_vec)
 
     # Perform the interpolation from the markers to the grid
     interpol_marker_to_nodes!(u, MIC, grid, parameters, z_ad_vec, x_ad_vec)

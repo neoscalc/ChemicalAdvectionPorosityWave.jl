@@ -54,19 +54,15 @@ function advection_call_func(u, t, integrator)
         if iszero(integrator.tprev)
             MIC_convert_adimensional(advection, compaction_l)
 
-            MIC_initialize_markers!(advection.u_mark, compo_f, advection, compaction_l)
-
+            MIC_initialize_markers!(advection.u_mark, compo_f, advection, parameters)
         end
-        @unpack vc_f = advection
+        @unpack vc_f, density_mark, u_mark, X_mark, Z_mark= advection
+
         velocity_to_center!(vc_f, v_f)
 
         MIC!(compo_f, v_f, vc_f, advection, parameters, Δt, grid)
 
-        @unpack u_mark, X_mark, Z_mark, density_mark = advection
-        reseeding_marker!(u_mark, X_mark, Z_mark, density_mark, advection, compaction_l)
-
-        # display(scatter(X_mark, Z_mark,legend=false, markersize=0.1, color=:blue, xlim=(grid.Lx/compaction_l /4, grid.Lx/compaction_l /4 * 3)))
-
+        reseeding_marker!(u_mark, X_mark, Z_mark, density_mark, advection, parameters)
     end
 
     # normalize values to 100%
@@ -79,5 +75,4 @@ function advection_call_func(u, t, integrator)
             compo_f[i,j,k] = compo_f[i,j,k] / sum_element[I] * 100
         end
     end
-
 end

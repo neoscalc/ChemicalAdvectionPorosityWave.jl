@@ -90,10 +90,10 @@ function main()
             vy0 .= .- vy0
             counter_half += 1
             change_rotation = true
-            writedlm("Data/UW_half.txt", u_UW)
-            writedlm("Data/WENO_half.txt", u_WENO)
-            writedlm("Data/SL_QM_half.txt", u_SL_QM)
-            writedlm("Data/MIC_half.txt", u_MIC)
+            # writedlm("Data/UW_half.txt", u_UW)
+            # writedlm("Data/WENO_half.txt", u_WENO)
+            # writedlm("Data/SL_QM_half.txt", u_SL_QM)
+            # writedlm("Data/MIC_half.txt", u_MIC)
         end
 
         l = @layout [a b; c d]
@@ -115,16 +115,39 @@ function main()
     vx0 .= .- vx0
     vy0 .= .- vy0
 
-    writedlm("Data/UW.txt", u_UW)
-    writedlm("Data/WENO.txt", u_WENO)
-    writedlm("Data/SL_QM.txt", u_SL_QM)
-    writedlm("Data/MIC.txt", u_MIC)
-    writedlm("Data/mass.txt", mass)
-    writedlm("Data/vx.txt",  vx0)
-    writedlm("Data/vy.txt", vy0)
-    writedlm("Data/gridx.txt", grid[1])
-    writedlm("Data/gridy.txt", grid[2])
+    # writedlm("Data/UW.txt", u_UW)
+    # writedlm("Data/WENO.txt", u_WENO)
+    # writedlm("Data/SL_QM.txt", u_SL_QM)
+    # writedlm("Data/MIC.txt", u_MIC)
+    # writedlm("Data/mass.txt", mass)
+    # writedlm("Data/vx.txt",  vx0)
+    # writedlm("Data/vy.txt", vy0)
+    # writedlm("Data/gridx.txt", grid[1])
+    # writedlm("Data/gridy.txt", grid[2])
+    # print mass conservation of each scheme
+    println("mass conservation of UW scheme: ", mass_UW)
+    println("mass conservation of WENO scheme: ", mass_WENO)
+    println("mass conservation of SL quasi-monotone scheme: ", mass_SL_QM)
+    println("mass conservation of MIC scheme: ", mass_MIC)
 
+    # print maximum value of each scheme
+    println("maximum value of UW scheme: ", maximum(u_UW))
+    println("maximum value of WENO scheme: ", maximum(u_WENO))
+    println("maximum value of SL quasi-monotone scheme: ", maximum(u_SL_QM))
+    println("maximum value of MIC scheme: ", maximum(u_MIC))
+
+    # print error of each scheme using the mean square error
+    # error_UW = 1/(nx*ny) * np.sum((C0 - u_UW)**2)
+
+    error_UW = sum((u0 .- u_UW).^2) / (nx*ny)
+    error_WENO = sum((u0 .- u_WENO).^2) / (nx*ny)
+    error_SL_QM = sum((u0 .- u_SL_QM).^2) / (nx*ny)
+    error_MIC = sum((u0 .- u_MIC).^2) / (nx*ny)
+
+    println("error of UW scheme: ", error_UW)
+    println("error of WENO scheme: ", error_WENO)
+    println("error of SL quasi-monotone scheme: ", error_SL_QM)
+    println("error of MIC scheme: ", error_MIC)
 
 end
 

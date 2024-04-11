@@ -56,8 +56,8 @@ function velocity_interp!(X_mark, Y_mark, v, MIC, parameters)
     Y_mark_save .= Y_mark
 
     # Advect marker with previous velocity
-    X_mark .= X_mark .+ v_t_old[1] .* Δt
-    Y_mark .= Y_mark .+ v_t_old[2] .* Δt
+    X_mark .= X_mark .+ v_t_old[1] .* Δt .* 0.5
+    Y_mark .= Y_mark .+ v_t_old[2] .* Δt .* 0.5
 
     @inbounds for I = CartesianIndices(u_mark)
         v_timestep[1][I] = setp_vx(Y_mark[I], X_mark[I])
@@ -65,8 +65,8 @@ function velocity_interp!(X_mark, Y_mark, v, MIC, parameters)
     end
 
     # Advect marker with fixed point velocity
-    X_mark .= X_mark_save .+ (v_t_old[1] .+ v_timestep[1]) .* 0.5 .* Δt
-    Y_mark .= Y_mark_save .+ (v_t_old[2] .+ v_timestep[2]) .* 0.5 .* Δt
+    X_mark .= X_mark_save .+ v_timestep[1] .* Δt
+    Y_mark .= Y_mark_save .+ v_timestep[2] .* Δt
 
 end
 
