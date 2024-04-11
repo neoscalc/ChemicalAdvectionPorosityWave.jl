@@ -41,6 +41,8 @@ const THRESHOLD_FACTOR_DENSITY_REMOVE = 2.0
     wt_sum::Array{Float64, 2} = similar(u0[:,:,1])
     wt_sum_atomic::Matrix{Atomic{Float64}} = [Atomic{Float64}(0.0) for _ in 1:size(wt_sum,1), _ in 1:size(wt_sum,2)]
     density_mark::Array{Float64, 2} = zeros(nz, nx)
+    ratio_marker_x::Array{Float64, 1} = ones(round(Int,nx_marker/nx))
+    ratio_marker_z::Array{Float64, 1} = ones(round(Int,nz_marker/nz))
     algo_name::String = "MIC"
 end
 
@@ -77,7 +79,7 @@ function MIC_initialize_markers!(u_mark, u, MIC, parameters)
 end
 
 
-function density_marker_per_cell!(density_mark, X_mark, Z_mark, xs_ad, zs_ad)
+function density_marker_per_cell!(density_mark, X_mark, Z_mark, xs_ad_vec, zs_ad_vec)
     # Create a list of all markers and sort it
     markers = sort(collect(zip(X_mark, Z_mark)), by = x -> (x[1], x[2]))
 
@@ -85,14 +87,14 @@ function density_marker_per_cell!(density_mark, X_mark, Z_mark, xs_ad, zs_ad)
         i, j = Tuple(I)
 
         # Use binary search to find the range of markers within the cell's boundaries
-        lower = searchsortedfirst(markers, (xs_ad[j], zs_ad[i]), by = x -> (x[1], x[2]))
-        upper = searchsortedlast(markers, (xs_ad[j+1], zs_ad[i+1]), by = x -> (x[1], x[2]))
+        lower = searchsortedfirst(markers, (xs_ad_vec[j], zs_ad_vec[i]), by = x -> (x[1], x[2]))
+        upper = searchsortedlast(markers, (xs_ad_vec[j+1], zs_ad_vec[i+1]), by = x -> (x[1], x[2]))
 
         # Count the markers within the cell
         count = 0
         for k in lower:upper
             x, z = markers[k]
-            if x >= xs_ad[j] && x <= xs_ad[j+1] && z >= zs_ad[i] && z <= zs_ad[i+1]
+            if x >= xs_ad_vec[j] && x <= xs_ad_vec[j+1] && z >= zs_ad_vec[i] && z <= zs_ad_vec[i+1]
                 count += 1
             end
         end
@@ -107,9 +109,9 @@ function calculate_indices(index, nb_el)
     return start_index, end_index
 end
 
-function add_marker_per_cell!(u_mark, X_mark, Z_mark, density_mark, xs_ad, zs_ad, MIC)
+function add_marker_per_cell!(u_mark, X_mark, Z_mark, density_mark, xs_ad_vec, zs_ad_vec, MIC)
 
-    @unpack nx, nz, nx_marker, nz_marker, X_mark_save, Z_mark_save, vc_t_old, vs_t_old, v_t_old, vc_timestep, vs_timestep, v_timestep, norm_mark, XZ_mark_cell, mark_per_cell, mark_per_cell_array, mark_per_cell_array_el, u0 = MIC
+    @unpack nx, nz, nx_marker, nz_marker, X_mark_save, Z_mark_save, vc_t_old, vs_t_old, v_t_old, vc_timestep, vs_timestep, v_timestep, norm_mark, XZ_mark_cell, mark_per_cell, mark_per_cell_array, mark_per_cell_array_el, u0, ratio_marker_x, ratio_marker_z = MIC
 
     @inbounds for I in CartesianIndices(density_mark)
         i, j = Tuple(I)
@@ -119,10 +121,10 @@ function add_marker_per_cell!(u_mark, X_mark, Z_mark, density_mark, xs_ad, zs_ad
             nb_el = size(u0, 3)
 
             # add evenly spaced markers in the cell on all arrays
-            XZ_mark_cell .= ((range(zs_ad[i], length=round(Int, nz_marker/nz), stop= zs_ad[i+1]))' .*  ones(round(Int,nx_marker/nx)))[:]
+            XZ_mark_cell .= ((range(zs_ad_vec[i], length=round(Int, nz_marker/nz), stop= zs_ad_vec[i+1]))' .*  ratio_marker_x)[:]
             append!(Z_mark, XZ_mark_cell)
-            XZ_mark_cell .= (range(xs_ad[j], length=round(Int, nx_marker/nx), stop= xs_ad[j+1]) .*  ones(round(Int,nz_marker/nz))')[:]
-            append!(X_mark, (range(xs_ad[j], length=round(Int, nx_marker/nx), stop= xs_ad[j+1]) .*  ones(round(Int,nz_marker/nz))')[:])
+            XZ_mark_cell .= (range(xs_ad_vec[j], length=round(Int, nx_marker/nx), stop= xs_ad_vec[j+1]) .*  ratio_marker_z')[:]
+            append!(X_mark, (range(xs_ad_vec[j], length=round(Int, nx_marker/nx), stop= xs_ad_vec[j+1]) .*  ones(round(Int,nz_marker/nz))')[:])
             append!(Z_mark_save, mark_per_cell_array)
             append!(X_mark_save, mark_per_cell_array)
             append!(vc_t_old[1], mark_per_cell_array)
@@ -161,7 +163,7 @@ function add_marker_per_cell!(u_mark, X_mark, Z_mark, density_mark, xs_ad, zs_ad
             index_delete::Vector{Int64} = []
 
             @inbounds for k in axes(prev_X_mark, 1)
-                if prev_Z_mark[k] >= zs_ad[i] && prev_Z_mark[k] <= zs_ad[i+1] && prev_X_mark[k] >= xs_ad[j] && prev_X_mark[k] <= xs_ad[j+1]
+                if prev_Z_mark[k] >= zs_ad_vec[i] && prev_Z_mark[k] <= zs_ad_vec[i+1] && prev_X_mark[k] >= xs_ad_vec[j] && prev_X_mark[k] <= xs_ad_vec[j+1]
                     push!(index_delete, k)
                 end
             end
@@ -273,10 +275,10 @@ function reseeding_marker!(u_mark, X_mark, Z_mark, density_mark, MIC, parameters
     @unpack nx, nz, nx_marker, nz_marker, Lz, Lx = MIC
     @unpack xs_ad, zs_ad, xs_ad_vec, zs_ad_vec = parameters
 
-    density_marker_per_cell!(density_mark, X_mark, Z_mark, xs_ad_vec, zs_ad_vec)
+    # density_marker_per_cell!(density_mark, X_mark, Z_mark, xs_ad_vec, zs_ad_vec)
 
-    add_marker_per_cell!(u_mark, X_mark, Z_mark, density_mark, xs_ad, zs_ad, MIC)
-    remove_marker_per_cell!(u_mark, X_mark, Z_mark, density_mark, xs_ad, zs_ad, MIC)
+    add_marker_per_cell!(u_mark, X_mark, Z_mark, density_mark, xs_ad_vec, zs_ad_vec, MIC)
+    remove_marker_per_cell!(u_mark, X_mark, Z_mark, density_mark, xs_ad_vec, zs_ad_vec, MIC)
 end
 
 
