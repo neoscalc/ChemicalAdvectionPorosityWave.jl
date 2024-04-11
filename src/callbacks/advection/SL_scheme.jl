@@ -29,7 +29,7 @@ function initial_pos_marker!(x_t_depart, z_t_depart, v_t_half, v, v_timestep, Δ
 
     # for the 1st timestep, when v_timestep = 0
     if any(v_timestep[:x] .!= 0.0) || any(v_timestep[:z] .!= 0.0)
-        @inbounds @threads for I in eachindex(v_t_half)
+        @inbounds @threads for I in eachindex(v_t_half[1])
             v_t_half[:x][I] = (v[:x][I] + v_timestep[:x][I]) * 0.5
             v_t_half[:z][I] = (v[:z][I] + v_timestep[:z][I]) * 0.5
         end
@@ -39,7 +39,7 @@ function initial_pos_marker!(x_t_depart, z_t_depart, v_t_half, v, v_timestep, Δ
     end
 
     # calculate the previous position of the particle at position t+1/2 from the position at t+1 as first guess
-    @threads for I in eachindex(x_t_depart)
+    @inbounds @threads for I in eachindex(x_t_depart)
         x_t_depart[I] = grid_ad[:x][I] - v_t_half[:x][I] * Δt * 0.5
         z_t_depart[I] = grid_ad[:z][I] - v_t_half[:z][I] * Δt * 0.5
     end
@@ -49,7 +49,7 @@ function initial_pos_marker!(x_t_depart, z_t_depart, v_t_half, v, v_timestep, Δ
 
     # iterate 4 times to improve approximation
     for _ in 1:4
-        @inbounds @threads for I in CartesianIndices((nz, nx))
+        @inbounds @threads for I in eachindex(x_t_depart)
             x_t_depart[I] = grid_ad[:x][I] - setp_x(grid_ad[:z][I], (x_t_depart[I] + grid_ad[:x][I]) * 0.5) * Δt
             z_t_depart[I] = grid_ad[:z][I] - setp_z((z_t_depart[I] + grid_ad[:z][I]) * 0.5, grid_ad[:x][I]) * Δt
         end
@@ -172,7 +172,6 @@ function semi_lagrangian!(u_monot, SL, vc, vc_timestep, Δt, Grid, parameters, �
     initial_pos_marker!(SL.x_t_depart, SL.z_t_depart, SL.v_t_half, vc, vc_timestep, Δt, Grid, parameters)
 
     if method == :quasi_monotone
-
         SL_quasi_monotone!(u_monot, SL, Δt, Grid, parameters)
     elseif method == :cubic
         SL_cubic!(u_monot, SL, Grid, parameters)

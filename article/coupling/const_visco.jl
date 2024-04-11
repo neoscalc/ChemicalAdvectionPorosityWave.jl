@@ -65,7 +65,7 @@ for I in CartesianIndices(domain.compo_f[:,:,1])
 end
 
 # to choose the advection schemes, 4 options: UW (upwind), WENO (WENO-5), SL (quasi-monotone semi-Lagrangian) and MIC (marker-in-cell)
-algo_name = "MIC"
+algo_name = "WENO"
 
 # Courant number has to be lower than 1 for upwind and WENO-5, can be higher for MIC and QMSL
 Courant_nb = 0.7

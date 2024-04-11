@@ -114,7 +114,7 @@ end
 
 
 function WENO_flux_upwind_x!(fL, u, nx, ny, method)
-    @inbounds for I = CartesianIndices((ny, nx))
+    @inbounds @threads for I = CartesianIndices((ny, nx))
         i,j = Tuple(I)
         jw, jww = limit_periodic(j-1, nx), limit_periodic(j-2, nx)
         je, jee = limit_periodic(j+1, nx), limit_periodic(j+2, nx)

@@ -64,8 +64,8 @@ function velocity_to_center!(vc, v)
     @inbounds @threads for I = CartesianIndices(vc[:x])
         i, j = Tuple(I)
 
-        vc[:z][I] = 0.5 * (v[:z][I] + v[:z][i+1,j])
-        vc[:x][I] = 0.5 * (v[:x][I] + v[:x][i,j+1])
+        vc[:x][I] = 0.5 * (v[:x][I] + v[:x][i,j+1])  # x
+        vc[:z][I] = 0.5 * (v[:z][I] + v[:z][i+1,j])  # z
     end
 
 end
@@ -102,7 +102,6 @@ function velocity_call_func(u, t, integrator)
     ϕ = @view integrator.u[:,:,2]
     ϕ_prev = @view integrator.uprev[:,:,2]
     Pe = @view integrator.u[:,:,1]
-    Pe_prev = @view integrator.uprev[:,:,1]
 
     solid_velocity_ad!(vc_s, ϕ, ϕ_prev, Δt_ad, parameters, domain, grid)
     velocity_to_sides!(v_s, vc_s, grid)
