@@ -2,7 +2,7 @@ using Parameters
 using Interpolations
 import StatsBase:sample
 
-const THRESHOLD_FACTOR_DENSITY_ADD = 0.5
+const THRESHOLD_FACTOR_DENSITY_ADD = 0.25
 const THRESHOLD_FACTOR_DENSITY_REMOVE = 2.0
 
 
@@ -102,6 +102,7 @@ function density_marker_per_cell!(density_mark, X_mark, Z_mark, xs_ad_vec, zs_ad
         density_mark[I] = count
     end
 end
+
 
 function calculate_indices(index, nb_el)
     start_index = nb_el * (index - 1) + 1
