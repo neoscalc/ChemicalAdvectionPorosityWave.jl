@@ -5,6 +5,7 @@ using BenchmarkTools
 using Parameters
 using ProgressBars
 using DelimitedFiles
+import Base.Threads.@threads
 
 include("Code/Model.jl")
 include("Code/UW_scheme.jl")
@@ -73,7 +74,7 @@ function main()
     # loop over tmax with a step of Δt
     for _ in tqdm(range(0, tmax, step=Δt))
         SL_scheme.semi_lagrangian!(u_SL_QM, SL, Param.v0, Param.v0, Param; method="quasi-monotone")
-        WENO_scheme.WENO_scheme!(u_WENO, Param.v0, WENO, Param; method="Z")
+        WENO_scheme.WENO_scheme!(u_WENO, Param.v0, WENO, Param; method=:Z)
         MIC_scheme.MIC!(u_MIC, MIC,Param.v0, Param)
 
         l = @layout [a b; c d]

@@ -1,6 +1,5 @@
 using Parameters
 using Interpolations
-import Base.Threads.@threads
 
 @with_kw struct SemiLagrangianScheme
     nx::Int
@@ -29,27 +28,30 @@ function initial_pos_marker!(x_t_depart, z_t_depart, v_t_half, v, v_timestep, Δ
     @unpack grid_ad, x_ad, z_ad = parameters;
 
     # for the 1st timestep, when v_timestep = 0
-    if !iszero(v_timestep[:x]) && !iszero(v_timestep[:z])
-        v_t_half[:x] .= (v[:x] .+ v_timestep[:x]) ./ 2
-        v_t_half[:z] .= (v[:z] .+ v_timestep[:z]) ./ 2
+    if any(v_timestep[:x] .!= 0.0) || any(v_timestep[:z] .!= 0.0)
+        @inbounds @threads for I in eachindex(v_t_half[1])
+            v_t_half[:x][I] = (v[:x][I] + v_timestep[:x][I]) * 0.5
+            v_t_half[:z][I] = (v[:z][I] + v_timestep[:z][I]) * 0.5
+        end
     else
-        v_t_half[:x] .= copy(v[:x])
-        v_t_half[:z] .= copy(v[:z])
+        v_t_half[:x] .= v[:x]
+        v_t_half[:z] .= v[:z]
     end
 
     # calculate the previous position of the particle at position t+1/2 from the position at t+1 as first guess
-    x_t_depart .= grid_ad[:x] .- v_t_half[:x] .* Δt / 2
-    z_t_depart .= grid_ad[:z] .- v_t_half[:z] .* Δt / 2
+    @inbounds @threads for I in eachindex(x_t_depart)
+        x_t_depart[I] = grid_ad[:x][I] - v_t_half[:x][I] * Δt * 0.5
+        z_t_depart[I] = grid_ad[:z][I] - v_t_half[:z][I] * Δt * 0.5
+    end
 
     setp_x = extrapolate(scale(interpolate(v_t_half[:x], BSpline(Linear())), z_ad, x_ad), Line())
     setp_z = extrapolate(scale(interpolate(v_t_half[:z], BSpline(Linear())), z_ad, x_ad), Line())
 
-
     # iterate 4 times to improve approximation
     for _ in 1:4
-        for I in CartesianIndices((nz, nx))
-            x_t_depart[I] = grid_ad[:x][I] - setp_x(grid_ad[:z][I], (x_t_depart[I] + grid_ad[:x][I]) / 2) * Δt
-            z_t_depart[I] = grid_ad[:z][I] - setp_z((z_t_depart[I] + grid_ad[:z][I]) / 2, grid_ad[:x][I]) * Δt
+        @inbounds @threads for I in eachindex(x_t_depart)
+            x_t_depart[I] = grid_ad[:x][I] - setp_x(grid_ad[:z][I], (x_t_depart[I] + grid_ad[:x][I]) * 0.5) * Δt
+            z_t_depart[I] = grid_ad[:z][I] - setp_z((z_t_depart[I] + grid_ad[:z][I]) * 0.5, grid_ad[:x][I]) * Δt
         end
     end
 end
@@ -147,11 +149,11 @@ function SL_quasi_monotone!(u_monot, SL, Δt, Grid, parameters)
             end
 
 
-            SL.u_max[i, j] = max(u_monot[is, jw, k], u_monot[in, jw, k], u_monot[is, je, k], u_monot[in, je, k])
-            SL.u_min[i, j] = min(u_monot[is, jw, k], u_monot[in, jw, k], u_monot[is, je, k], u_monot[in, je, k])
+            SL.u_max[I] = max(u_monot[is, jw, k], u_monot[in, jw, k], u_monot[is, je, k], u_monot[in, je, k])
+            SL.u_min[I] = min(u_monot[is, jw, k], u_monot[in, jw, k], u_monot[is, je, k], u_monot[in, je, k])
 
 
-            SL.u_monot[i,j,k] = min(max(SL.u_cubic[i,j,k], SL.u_min[i, j]), SL.u_max[i, j])
+            SL.u_monot[i,j,k] = min(max(SL.u_cubic[i,j,k], SL.u_min[I]), SL.u_max[I])
         end
 
 
@@ -161,60 +163,19 @@ function SL_quasi_monotone!(u_monot, SL, Δt, Grid, parameters)
 
 end
 
-# function divergence_velocity!(div_v, v, Grid, Parameters)
 
-#     @unpack nx, nz, Δx, Δz = Grid;
-#     @unpack Δx_ad, Δz_ad, c0 = Parameters;
-
-#     for I in CartesianIndices((nz,nx))
-#         i,j = Tuple(I)
-#         iw, ie = limit_neumann(i-1, nz), limit_neumann(i+1, nz)
-#         js, jn = limit_neumann(j-1, nx), limit_neumann(j+1, nx)
-#         div_v[I] = ((v[:x][i,jn] + v[:x][i,j]) - (v[:x][i,js] + v[:x][i,j])) * 0.5 / Δx_ad + ((v[:z][ie,j] + v[:z][i,j]) - (v[:z][iw,j] + v[:z][i,j])) * 0.5 / Δz_ad
-#     end
-
-#     @show maximum(div_v)
-
-#     display(heatmap(div_v))
-
-# end
-
-# function determinant_jac!(det, div_v, Δt)
-#     det .= exp.(.- Δt .* div_v)
-# end
-
-# # interpolate the jacobian's determinant
-# function interpol_jac!(det_interp, det, SL, Grid, parameters)
-
-#     @unpack nx, nz = Grid;
-#     @unpack x_ad, z_ad = parameters
-#     @unpack x_t0, z_t0 = SL
-
-#     # interpolation Det of Jacobian
-#     # scaled interpolation with extrapolation on the boundaries
-#     setp = extrapolate(scale(interpolate(det, BSpline(Cubic(Periodic(OnCell())))), z_ad, x_ad), Periodic())
-
-#     for I = CartesianIndices((nz, nx))
-#         det_interp[I] = setp(z_t0[I],x_t0[I])
-#     end
-
-# end
-
-function semi_lagrangian!(u_monot, SL, vc, vc_timestep, Δt, Grid, parameters, ϕ, ϕ0; method::String="linear")
+function semi_lagrangian!(u_monot, SL, vc, vc_timestep, Δt, Grid, parameters, ϕ, ϕ0; method::Symbol=:quasi_monotone)
 
     @unpack nx, nz = Grid;
     @unpack grid_ad, Δx_ad, Δz_ad = parameters
 
     initial_pos_marker!(SL.x_t_depart, SL.z_t_depart, SL.v_t_half, vc, vc_timestep, Δt, Grid, parameters)
 
-    if method == "quasi-monotone"
-        # divergence_velocity!(SL.div_v, SL.v_t_half, Grid, parameters)
-        # determinant_jac!(SL.det, SL.div_v, Δt)
-        # interpol_jac!(SL.det_interp, SL.det, SL, Grid, Properties)
+    if method == :quasi_monotone
         SL_quasi_monotone!(u_monot, SL, Δt, Grid, parameters)
-    elseif method == "cubic"
+    elseif method == :cubic
         SL_cubic!(u_monot, SL, Grid, parameters)
-    elseif method == "linear"
+    elseif method == :linear
         SL_linear!(u_monot, SL, Grid, parameters)
     else
         error("Unknown method for the Semi-Lagrangian Scheme.")

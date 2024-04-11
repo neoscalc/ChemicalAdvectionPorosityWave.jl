@@ -1,6 +1,7 @@
 module Model
 
 using Parameters
+using Base.Threads: Atomic
 
 @with_kw mutable struct ModelParameters
     u0::Array{Float64, 2}
@@ -84,7 +85,9 @@ end
     v_t_old::Tuple{Vector{Float64}, Vector{Float64}} = (similar(X_mark),similar(Y_mark))
     v_timestep::Tuple{Vector{Float64}, Vector{Float64}} = (similar(X_mark),similar(Y_mark))
     u_sum::Array{Float64, 2} = similar(u0)
+    u_sum_atomic::Matrix{Atomic{Float64}} = [Atomic{Float64}(0.0) for _ in 1:size(u_sum,1), _ in 1:size(u_sum,2)]  # Assuming nx and nz are the dimensions of your 2D grid
     wt_sum::Array{Float64, 2} = similar(u0)
+    wt_sum_atomic::Matrix{Atomic{Float64}} = [Atomic{Float64}(0.0) for _ in 1:size(wt_sum,1), _ in 1:size(wt_sum,2)]
 end
 
 

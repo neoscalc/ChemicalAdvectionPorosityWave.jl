@@ -3,7 +3,7 @@ module SL_scheme
 using Parameters
 using Interpolations
 using OrdinaryDiffEq
-
+using Base.Threads: @threads
 
 @inline function limit_periodic(a, n)
     # check if index is on the boundary, if yes take value on the opposite for periodic, if not, don't change the value
@@ -16,12 +16,12 @@ function initial_pos_marker!(x_t_depart, y_t_depart, v_t_half, v, v_timestep, SL
 
     @unpack grid, Δt, x, y, nx, ny = Param;
 
-    if sum(v_timestep[1] .+ v_timestep[2]) !== 0.0
+    if any(v_timestep[1] .!= 0.0) || any(v_timestep[2] .!= 0.0)
         v_t_half[1] .= (v[1] .+ v_timestep[1]) ./ 2
         v_t_half[2] .= (v[2] .+ v_timestep[2]) ./ 2
     else
-        v_t_half[1] .= copy(v[1])
-        v_t_half[2] .= copy(v[2])
+        v_t_half[1] .= v[1]
+        v_t_half[2] .= v[2]
     end
 
     x_t_depart .= grid[1] .- v_t_half[1] .* Δt / 2 # calculate the previous position of the particle at position t+1/2 from the position at t+1
@@ -41,7 +41,7 @@ function initial_pos_marker!(x_t_depart, y_t_depart, v_t_half, v, v_timestep, SL
 
     # iterate iter times to improve approximation
     for _ in 1:iter
-        for I in CartesianIndices((ny, nx))
+        @inbounds @threads for I in CartesianIndices((ny, nx))
             # calculate the previous position of the particle at position t from the position at t+1/2
             x_t_depart[I] = grid[1][I] - setp_x(grid[2][I],((x_t_depart[I] + grid[1][I]) / 2)) * Δt
             y_t_depart[I] = grid[2][I] - setp_y((y_t_depart[I] + grid[2][I]) / 2 , grid[1][I]) * Δt
@@ -61,7 +61,7 @@ function SL_linear!(u, SL, parameters)
     setp = extrapolate(sitp, Periodic())
     # scaled interpolation with extrapolation on the boundaries
 
-    @inbounds for I = CartesianIndices((ny, nx))
+    @inbounds @threads for I = CartesianIndices((ny, nx))
         u[I] = setp(SL.y_t_depart[I], SL.x_t_depart[I])
     end
 end
@@ -78,11 +78,11 @@ function SL_quasi_monotone!(u, SL, parameters)
     setp = extrapolate(sitp, Periodic())
     # scaled interpolation with extrapolation on the boundaries
 
-    @inbounds for I = CartesianIndices((ny, nx))
+    @inbounds @threads for I = CartesianIndices((ny, nx))
         SL.u_cubic[I] = setp(SL.y_t_depart[I], SL.x_t_depart[I])
     end
 
-    @inbounds for I = CartesianIndices((ny, nx))
+    @inbounds @threads for I = CartesianIndices((ny, nx))
         i,j = Tuple(I)
 
         # Find nodes containing each particles and apply periodic boundaries
@@ -123,7 +123,7 @@ function SL_cubic!(u, SL, parameters)
     setp = extrapolate(sitp, Periodic())
     # scaled interpolation with extrapolation on the boundaries
 
-    @inbounds for I = CartesianIndices((ny, nx))
+    @inbounds @threads for I = CartesianIndices((ny, nx))
         u[I] = setp(SL.y_t_depart[I], SL.x_t_depart[I])
     end
 
@@ -234,7 +234,6 @@ function semi_lagrangian!(u, SL, v, v_timestep, parameters; method::String="quas
     else
         error("Unknown method for the semi-Lagrangian scheme.")
     end
-
 end
 
 
