@@ -1,10 +1,5 @@
 using ChemicalAdvectionPorosityWave
 
-
-# path to save the output data
-path_hdf5 = joinpath(@__DIR__,"output.h5")
-
-
 # define the resolution of the grid and the size of the model
 grid = Grid(nx=100, nz=200, Lx=450.0u"m", Lz=900.0u"m", tfinal=1.5u"Myr")
 
@@ -69,6 +64,9 @@ algo_name = "MIC"
 
 # Courant number has to be lower than 1 for upwind and WENO-5, can be higher for MIC and QMSL
 Courant_nb = 0.7
+
+# path to save the output data
+path_hdf5 = joinpath(@__DIR__,"output_$(grid.nx)x$(grid.nz)_$(algo_name)_C_$(Courant_nb)_1.5Myr.h5")
 
 # define structures for the models
 advection_algo = advection(;algo_name=algo_name, grid=grid, compo_f=domain.compo_f)
