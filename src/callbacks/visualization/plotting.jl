@@ -21,6 +21,7 @@ function plotting_tpf(u, t, integrator)
 
     display(plot(p1, p2, p3, p4, layout = l, plot_title="total time=$(time_model) Ma"))
 
+
     Plots.scalefontsizes()
 end
 

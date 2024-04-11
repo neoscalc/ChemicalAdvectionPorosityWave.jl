@@ -80,7 +80,7 @@ function main()
         UW_scheme.Upwind!(u_UW, UW.u_old, Param.v0, Param.Δt, Param)
         SL_scheme.semi_lagrangian!(u_SL_QM, SL, Param.v0, Param.v0, Param; method="quasi-monotone")
         WENO_scheme.WENO_scheme!(u_WENO, Param.v0, WENO, Param; method="Z")
-        # MIC_scheme.MIC!(u_MIC, MIC,Param.v0, Param)
+        MIC_scheme.MIC!(u_MIC, MIC,Param.v0, Param)
 
         change_rotation = false
 
@@ -115,8 +115,6 @@ function main()
     vx0 .= .- vx0
     vy0 .= .- vy0
 
-    # print(mass_SL_QM)
-
     # writedlm("Data/UW.txt", u_UW)
     # writedlm("Data/WENO.txt", u_WENO)
     # writedlm("Data/SL_QM.txt", u_SL_QM)
@@ -126,7 +124,30 @@ function main()
     # writedlm("Data/vy.txt", vy0)
     # writedlm("Data/gridx.txt", grid[1])
     # writedlm("Data/gridy.txt", grid[2])
+    # print mass conservation of each scheme
+    println("mass conservation of UW scheme: ", mass_UW)
+    println("mass conservation of WENO scheme: ", mass_WENO)
+    println("mass conservation of SL quasi-monotone scheme: ", mass_SL_QM)
+    println("mass conservation of MIC scheme: ", mass_MIC)
 
+    # print maximum value of each scheme
+    println("maximum value of UW scheme: ", maximum(u_UW))
+    println("maximum value of WENO scheme: ", maximum(u_WENO))
+    println("maximum value of SL quasi-monotone scheme: ", maximum(u_SL_QM))
+    println("maximum value of MIC scheme: ", maximum(u_MIC))
+
+    # print error of each scheme using the mean square error
+    # error_UW = 1/(nx*ny) * np.sum((C0 - u_UW)**2)
+
+    error_UW = sum((u0 .- u_UW).^2) / (nx*ny)
+    error_WENO = sum((u0 .- u_WENO).^2) / (nx*ny)
+    error_SL_QM = sum((u0 .- u_SL_QM).^2) / (nx*ny)
+    error_MIC = sum((u0 .- u_MIC).^2) / (nx*ny)
+
+    println("error of UW scheme: ", error_UW)
+    println("error of WENO scheme: ", error_WENO)
+    println("error of SL quasi-monotone scheme: ", error_SL_QM)
+    println("error of MIC scheme: ", error_MIC)
 
 end
 
