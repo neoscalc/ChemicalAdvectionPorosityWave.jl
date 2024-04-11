@@ -263,14 +263,6 @@ function reseeding_marker!(u_mark, X_mark, Z_mark, density_mark, MIC, parameters
 
     density_marker_per_cell!(density_mark, X_mark, Z_mark, xs_ad_vec, zs_ad_vec)
 
-    # l = @layout [a b]
-
-    # p1 = heatmap(grid.x*1e-3, grid.z*1e-3, compo_f[:,:,1],  xlim=(0, last(grid.x)*1e-3), ylim=(0, last(grid.z)*1e-3), title="wt% of SiO2", ylabel="Distance (km)",xlabel="Distance (km)", c = cgrad(:thermal, rev = true))
-
-    # p2 = heatmap(grid.x*1e-3, grid.z*1e-3, density_mark,  xlim=(0, last(grid.x)*1e-3), ylim=(0, last(grid.z)*1e-3), title="Density Marker", xlabel="Distance (km)", c = :viridis)
-    # display(plot(p1, p2, layout = l))
-
-
     add_marker_per_cell!(u_mark, X_mark, Z_mark, density_mark, xs_ad, zs_ad, MIC)
     remove_marker_per_cell!(u_mark, X_mark, Z_mark, density_mark, xs_ad, zs_ad, MIC)
 end
