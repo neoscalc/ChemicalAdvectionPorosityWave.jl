@@ -3,7 +3,7 @@
 [![DOI](https://zenodo.org/badge/685576414.svg)](https://zenodo.org/badge/latestdoi/685576414)
 
 
-ChemicalAdvectionPorosityWave is the source code for the paper "Modelling chemical advection during magma ascent" by Dominguez et al., 2023.
+ChemicalAdvectionPorosityWave is the source code for the paper "Modelling chemical advection during magma ascent" by Dominguez et al., 2024.
 
 The aim of this repository is to be able to reproduce the results in the paper and test four different advection schemes: an upwind scheme, a weighted essentially non oscillatory (WENO-5) scheme, a quasi-monotone semi-Lagrangian (QMSL) scheme and a marker-in-cell (MIC) method, applied to the problem of chemical advection during magma ascent.
 
