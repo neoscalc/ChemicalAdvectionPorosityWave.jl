@@ -9,10 +9,10 @@ using Base.Threads: Atomic
     Ly::Float64
     Δx::Float64
     Δy::Float64
-    nx::Int = round(Int,Lx/Δx+1)
-    ny::Int = round(Int,Ly/Δy+1)
-    x::StepRangeLen = range(0, length=nx, stop= Lx)
-    y::StepRangeLen = range(0, length=ny, stop= Ly)
+    nx::Int = round(Int,Lx/Δx)
+    ny::Int = round(Int,Ly/Δy)
+    x::StepRangeLen = range(Δx/2, length=nx, stop= Lx-Δx/2)
+    y::StepRangeLen = range(Δy/2, length=ny, stop= Ly-Δy/2)
     tmax::Float64
     # x first, y second
     grid::Tuple{Matrix{Float64}, Matrix{Float64}} = (x' .* ones(ny), ones(nx)' .* y)
@@ -67,16 +67,18 @@ end
     ny::Int
     Lx::Float64
     Ly::Float64
+    Δx::Float64 = Lx/nx
+    Δy::Float64 = Ly/ny
     nx_marker::Int = nx*3
     ny_marker::Int = ny*3
-    x::StepRangeLen = range(0, length=nx, stop= Lx)
+    x::StepRangeLen = range(Δx/2, length=nx, stop= Lx-Δx/2)
     x_vec::Array{Float64, 1} = collect(x)
-    y::StepRangeLen = range(0, length=ny, stop= Ly)
+    y::StepRangeLen = range(Δy/2, length=ny, stop= Ly-Δy/2)
     y_vec::Array{Float64, 1} = collect(y)
     X::Array{Float64, 2} = x' .* ones(length(y))
     Y::Array{Float64, 2} = ones(length(x))' .* y
-    x_mark::Array{Float64, 1} = collect(LinRange(0, Lx, nx_marker))
-    y_mark::Array{Float64, 1} = collect(LinRange(0, Ly, ny_marker))
+    x_mark::Array{Float64, 1} = collect(LinRange(Δx/2, Lx-Δx/2, nx_marker))
+    y_mark::Array{Float64, 1} = collect(LinRange(Δy/2, Ly-Δy/2, ny_marker))
     X_mark::Array{Float64, 1} = (x_mark' .* ones(length(y_mark)))[:]
     Y_mark::Array{Float64, 1} = (ones(length(x_mark))' .* y_mark)[:]
     X_mark_save::Array{Float64, 1} = similar(X_mark)
