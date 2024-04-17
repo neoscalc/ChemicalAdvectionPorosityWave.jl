@@ -71,7 +71,7 @@ function advection_call_func(u, t, integrator)
     for I = CartesianIndices(sum_element)
         i, j = Tuple(I)
         # threshold for composition and porosity
-        for k = axes(compo_f[:,:,1:end-1], 3)
+        for k = 1:(size(domain.compo_f, 3)-1)
             compo_f[i,j,k] = compo_f[i,j,k] / sum_element[I] * 100
         end
     end
