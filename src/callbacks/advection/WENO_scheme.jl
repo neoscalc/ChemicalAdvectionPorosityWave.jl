@@ -39,7 +39,7 @@ function WENO_u_upwind(u1, u2, u3, u4, u5, method)
     d1L = 3/5
     d2L = 3/10
 
-    ϵ = 1e-6
+    ϵ = eps()
 
     if method == :JS
         α0L = d0L / (β0 + ϵ)^2
@@ -89,7 +89,7 @@ function WENO_u_downwind(u1, u2, u3, u4, u5, method)
     d1R = 3/5
     d2R = 1/10
 
-    ϵ = 1e-6
+    ϵ = eps()
 
     # classical approach
     if method == :JS

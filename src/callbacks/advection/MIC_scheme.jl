@@ -1,9 +1,11 @@
 using Parameters
 using Interpolations
 import StatsBase:sample
+using LinearAlgebra:Adjoint, norm
 
 const THRESHOLD_FACTOR_DENSITY_ADD = 0.25
 const THRESHOLD_FACTOR_DENSITY_REMOVE = 2.0
+const FRACTION_REMOVE_MARKER = 0.5
 
 
 @with_kw struct MICScheme
@@ -24,6 +26,7 @@ const THRESHOLD_FACTOR_DENSITY_REMOVE = 2.0
     z_mark::Array{Float64, 1} = collect(range(0, length=nz_marker, stop= Lz))
     X_mark::Array{Float64, 1} = (x_mark' .* ones(length(z_mark)))[:]
     Z_mark::Array{Float64, 1} = (ones(length(x_mark))' .* z_mark)[:]
+    XZ_mark_sort::Vector{Tuple{Float64, Float64}} = collect(zip(X_mark, Z_mark))
     X_mark_save::Array{Float64, 1} = similar(X_mark)
     Z_mark_save::Array{Float64, 1} = similar(Z_mark)
     XZ_mark_cell::Array{Float64, 1} = ones(multiplier*multiplier)
@@ -42,7 +45,7 @@ const THRESHOLD_FACTOR_DENSITY_REMOVE = 2.0
     wt_sum_atomic::Matrix{Atomic{Float64}} = [Atomic{Float64}(0.0) for _ in 1:size(wt_sum,1), _ in 1:size(wt_sum,2)]
     density_mark::Array{Float64, 2} = zeros(nz, nx)
     ratio_marker_x::Array{Float64, 1} = ones(round(Int,nx_marker/nx))
-    ratio_marker_z::Array{Float64, 1} = ones(round(Int,nz_marker/nz))
+    ratio_marker_z_adjoint::Adjoint{Float64, Vector{Float64}} = ones(round(Int,nz_marker/nz))'
     algo_name::String = "MIC"
 end
 
@@ -79,21 +82,26 @@ function MIC_initialize_markers!(u_mark, u, MIC, parameters)
 end
 
 
-function density_marker_per_cell!(density_mark, X_mark, Z_mark, xs_ad_vec, zs_ad_vec)
-    # Create a list of all markers and sort it
-    markers = sort(collect(zip(X_mark, Z_mark)), by = x -> (x[1], x[2]))
+function density_marker_per_cell!(density_mark, X_mark, Z_mark, xs_ad_vec, zs_ad_vec, XZ_mark_sort)
+
+    @inbounds @threads for I in eachindex(XZ_mark_sort)
+        XZ_mark_sort[I] = (X_mark[I], Z_mark[I])
+    end
+
+    # Sort the vector of tuples
+    sort!(XZ_mark_sort, by = x -> (x[1], x[2]); alg=QuickSort)
 
     @inbounds @threads for I in CartesianIndices(density_mark)
         i, j = Tuple(I)
 
         # Use binary search to find the range of markers within the cell's boundaries
-        lower = searchsortedfirst(markers, (xs_ad_vec[j], zs_ad_vec[i]), by = x -> (x[1], x[2]))
-        upper = searchsortedlast(markers, (xs_ad_vec[j+1], zs_ad_vec[i+1]), by = x -> (x[1], x[2]))
+        lower = searchsortedfirst(XZ_mark_sort, (xs_ad_vec[j], zs_ad_vec[i]), by = x -> (x[1], x[2]))
+        upper = searchsortedlast(XZ_mark_sort, (xs_ad_vec[j+1], zs_ad_vec[i+1]), by = x -> (x[1], x[2]))
 
         # Count the markers within the cell
         count = 0
         for k in lower:upper
-            x, z = markers[k]
+            x, z = XZ_mark_sort[k]
             if x >= xs_ad_vec[j] && x <= xs_ad_vec[j+1] && z >= zs_ad_vec[i] && z <= zs_ad_vec[i+1]
                 count += 1
             end
@@ -112,11 +120,13 @@ end
 
 function add_marker_per_cell!(u_mark, X_mark, Z_mark, density_mark, xs_ad_vec, zs_ad_vec, MIC)
 
-    @unpack nx, nz, nx_marker, nz_marker, X_mark_save, Z_mark_save, vc_t_old, vs_t_old, v_t_old, vc_timestep, vs_timestep, v_timestep, norm_mark, XZ_mark_cell, mark_per_cell, mark_per_cell_array, mark_per_cell_array_el, u0, ratio_marker_x, ratio_marker_z = MIC
+    @unpack nx, nz, nx_marker, nz_marker, X_mark_save, Z_mark_save, vc_t_old, vs_t_old, v_t_old, vc_timestep, vs_timestep, v_timestep, norm_mark, XZ_mark_cell, mark_per_cell, mark_per_cell_array, mark_per_cell_array_el, u0, ratio_marker_x, ratio_marker_z_adjoint, XZ_mark_sort = MIC
 
-    @inbounds for I in CartesianIndices(density_mark)
+    threshold_density = round(THRESHOLD_FACTOR_DENSITY_ADD*nx_marker*nz_marker / (nx*nz))
+
+    for I in CartesianIndices(density_mark)
         i, j = Tuple(I)
-        if density_mark[i, j] < round(THRESHOLD_FACTOR_DENSITY_ADD*nx_marker*nz_marker / (nx*nz))
+        if density_mark[i, j] < threshold_density
 
             index_previous = size(X_mark, 1)
             nb_el = size(u0, 3)
@@ -124,8 +134,8 @@ function add_marker_per_cell!(u_mark, X_mark, Z_mark, density_mark, xs_ad_vec, z
             # add evenly spaced markers in the cell on all arrays
             XZ_mark_cell .= ((range(zs_ad_vec[i], length=round(Int, nz_marker/nz), stop= zs_ad_vec[i+1]))' .*  ratio_marker_x)[:]
             append!(Z_mark, XZ_mark_cell)
-            XZ_mark_cell .= (range(xs_ad_vec[j], length=round(Int, nx_marker/nx), stop= xs_ad_vec[j+1]) .*  ratio_marker_z')[:]
-            append!(X_mark, (range(xs_ad_vec[j], length=round(Int, nx_marker/nx), stop= xs_ad_vec[j+1]) .*  ones(round(Int,nz_marker/nz))')[:])
+            XZ_mark_cell .= (range(xs_ad_vec[j], length=round(Int, nx_marker/nx), stop= xs_ad_vec[j+1]) .*  ratio_marker_z_adjoint)[:]
+            append!(X_mark, XZ_mark_cell)
             append!(Z_mark_save, mark_per_cell_array)
             append!(X_mark_save, mark_per_cell_array)
             append!(vc_t_old[1], mark_per_cell_array)
@@ -142,22 +152,30 @@ function add_marker_per_cell!(u_mark, X_mark, Z_mark, density_mark, xs_ad_vec, z
             append!(v_timestep[2], mark_per_cell_array)
             append!(u_mark, mark_per_cell_array_el)
 
+            # push each value of XZ_mark_cell in XZ_mark_sort
+            append!(XZ_mark_sort, [(0.0, 0.0) for _ in axes(XZ_mark_cell, 1)])
+
             prev_X_mark = @view X_mark[1:index_previous]
             prev_Z_mark = @view Z_mark[1:index_previous]
 
             new_X_mark = @view X_mark[index_previous+1:end]
             new_Z_mark = @view Z_mark[index_previous+1:end]
 
-            @inbounds for k in axes(new_X_mark, 1)
+            @inbounds @threads for k in axes(new_X_mark, 1)
+                @inbounds for l in axes(norm_mark, 1)
+                    norm_mark[l] = sqrt(sum(abs2, ((prev_X_mark[l] - new_X_mark[k]), (prev_Z_mark[l] - new_Z_mark[k]))))
+                end
 
-                norm_mark .= (prev_X_mark .- new_X_mark[k]).^2 .+ (prev_Z_mark .- new_Z_mark[k]).^2
                 index_minimum = argmin(norm_mark)
 
                 # replace values in u_mark with the closest marker
                 index_u_mark_start, index_u_mark_end = calculate_indices(index_previous+k, nb_el)
                 index_u_mark_start_near, index_u_mark_end_near = calculate_indices(index_minimum, nb_el)
 
-                u_mark[index_u_mark_start:index_u_mark_end] .= u_mark[index_u_mark_start_near:index_u_mark_end_near]
+                u_mark_view_new = @view u_mark[index_u_mark_start:index_u_mark_end]
+                u_mark_view_near = @view u_mark[index_u_mark_start_near:index_u_mark_end_near]
+
+                u_mark_view_new .= u_mark_view_near
             end
 
             # delete all previous markers inside this cell
@@ -190,6 +208,7 @@ function add_marker_per_cell!(u_mark, X_mark, Z_mark, density_mark, xs_ad_vec, z
             deleteat!(vs_timestep[2], index_delete)
             deleteat!(v_timestep[2], index_delete)
             deleteat!(norm_mark, index_delete)
+            deleteat!(XZ_mark_sort, index_delete)
 
             # Preallocate index_delete_compo
             index_delete_compo = Vector{Int64}(undef, nb_el * length(index_delete))
@@ -210,11 +229,13 @@ end
 
 function remove_marker_per_cell!(u_mark, X_mark, Z_mark, density_mark, x, z, MIC)
 
-    @unpack nx, nz, nx_marker, nz_marker, X_mark_save, Z_mark_save, vc_t_old, vs_t_old, v_t_old, vc_timestep, vs_timestep, v_timestep, norm_mark, u0 = MIC
+    @unpack nx, nz, nx_marker, nz_marker, X_mark_save, Z_mark_save, vc_t_old, vs_t_old, v_t_old, vc_timestep, vs_timestep, v_timestep, norm_mark, u0, XZ_mark_sort = MIC
+
+    threshold_density = round(THRESHOLD_FACTOR_DENSITY_REMOVE*nx_marker*nz_marker / (nx*nz))
 
     @inbounds for I in CartesianIndices(density_mark)
         i, j = Tuple(I)
-        if density_mark[i, j] > round(THRESHOLD_FACTOR_DENSITY_REMOVE*nx_marker*nz_marker / (nx*nz))
+        if density_mark[i, j] > threshold_density
 
             nb_el = size(u0, 3)
 
@@ -231,9 +252,8 @@ function remove_marker_per_cell!(u_mark, X_mark, Z_mark, density_mark, x, z, MIC
 
             index_delete = index_delete[1:round(Int, length(index_delete)/3)]
 
-            # choose only one quarter of the markers in the cell
-            p = 1/4
-            marker_to_remove = round(Int, p*length(index_delete))
+            # choose half of the markers in the cell
+            marker_to_remove = round(Int, FRACTION_REMOVE_MARKER*length(index_delete))
             index_delete_choosen::Vector{Int64} = sort(sample(index_delete, marker_to_remove; replace=false))
 
             deleteat!(X_mark, index_delete_choosen)
@@ -253,6 +273,7 @@ function remove_marker_per_cell!(u_mark, X_mark, Z_mark, density_mark, x, z, MIC
             deleteat!(vs_timestep[2], index_delete_choosen)
             deleteat!(v_timestep[2], index_delete_choosen)
             deleteat!(norm_mark, index_delete_choosen)
+            deleteat!(XZ_mark_sort, index_delete_choosen)
 
             # Preallocate index_delete_compo
             index_delete_compo = Vector{Int64}(undef, nb_el * length(index_delete_choosen))
@@ -273,10 +294,10 @@ end
 
 function reseeding_marker!(u_mark, X_mark, Z_mark, density_mark, MIC, parameters)
 
-    @unpack nx, nz, nx_marker, nz_marker, Lz, Lx = MIC
+    @unpack nx, nz, nx_marker, nz_marker, Lz, Lx, XZ_mark_sort = MIC
     @unpack xs_ad, zs_ad, xs_ad_vec, zs_ad_vec = parameters
 
-    density_marker_per_cell!(density_mark, X_mark, Z_mark, xs_ad_vec, zs_ad_vec)
+    density_marker_per_cell!(density_mark, X_mark, Z_mark, xs_ad_vec, zs_ad_vec, XZ_mark_sort)
 
     add_marker_per_cell!(u_mark, X_mark, Z_mark, density_mark, xs_ad_vec, zs_ad_vec, MIC)
     remove_marker_per_cell!(u_mark, X_mark, Z_mark, density_mark, xs_ad_vec, zs_ad_vec, MIC)

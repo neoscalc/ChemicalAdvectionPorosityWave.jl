@@ -1,7 +1,7 @@
 using ChemicalAdvectionPorosityWave
 
 # define the resolution of the grid and the size of the model
-grid = Grid(nx=100, nz=200, Lx=450.0u"m", Lz=900.0u"m", tfinal=1.5u"Myr")
+grid = Grid(nx=200, nz=400, Lx=450.0u"m", Lz=900.0u"m", tfinal=1.5u"Myr")
 
 domain = Domain(x=grid.x, z=grid.z, nb_element=9)
 
@@ -60,7 +60,7 @@ for I in CartesianIndices(domain.compo_f[:,:,1])
 end
 
 # to choose the advection schemes, 4 options: UW (upwind), WENO (WENO-5), SL (quasi-monotone semi-Lagrangian) and MIC (marker-in-cell)
-algo_name = "WENO"
+algo_name = "MIC"
 
 # Courant number has to be lower than 1 for upwind and WENO-5, can be higher for MIC and QMSL
 Courant_nb = 0.7
@@ -92,7 +92,7 @@ output_call = PresetTimeCallback(save_time,save_data)
 steplimiter = StepsizeLimiter(dtmaxC;safety_factor=10//10,max_step=false,cached_dtcache=0.0)
 
 # define the order in which to call the callback functions
-callbacks = CallbackSet(velocity_call, advection_call, steplimiter, plotting, output_call)
+callbacks = CallbackSet(velocity_call, advection_call, steplimiter, plotting)
 # callbacks = CallbackSet(velocity_call, advection_call, steplimiter, output_call)
 
 
@@ -129,3 +129,269 @@ println("Solving the problem...")
 
 @time sol = solve(prob_sparse, TRBDF2(linsolve=UMFPACKFactorization()), progress = true, callback = callbacks,
 progress_steps = 1, save_everystep=false;)
+
+
+
+# MWE to test reseeding
+
+@unpack compo_f, compo_f_prev = domain
+@unpack compaction_t, compaction_ϕ, compaction_l, v_f, xs_ad, zs_ad, xs_ad_vec, zs_ad_vec = model
+@unpack algo_name, u_mark, X_mark, Z_mark, density_mark, nx, nz, nx_marker, nz_marker, Lz, Lx, nx, nz, nx_marker, nz_marker, X_mark_save, Z_mark_save, vc_t_old, vs_t_old, v_t_old, vc_timestep, vs_timestep, v_timestep, norm_mark, XZ_mark_cell, mark_per_cell, mark_per_cell_array, mark_per_cell_array_el, u0, XZ_mark_sort = advection_algo
+@unpack ϕ_ini = model
+
+ChemicalAdvectionPorosityWave.MIC_convert_adimensional(advection_algo, compaction_l)
+
+ChemicalAdvectionPorosityWave.MIC_initialize_markers!(advection_algo.u_mark, compo_f, advection_algo, model)
+
+X_mark_sort = sort(X_mark)
+Z_mark_sort = sort(Z_mark)
+# @btime ChemicalAdvectionPorosityWave.density_marker_per_cell!($density_mark, $X_mark, $Z_mark, $xs_ad_vec, $zs_ad_vec, $XZ_mark_sort)
+ChemicalAdvectionPorosityWave.density_marker_per_cell!(density_mark, X_mark, Z_mark, xs_ad_vec, zs_ad_vec, XZ_mark_sort)
+density_mark[100, 50:60] .= 0
+
+
+# @time ChemicalAdvectionPorosityWave.add_marker_per_cell!(u_mark, X_mark, Z_mark, density_mark, xs_ad, zs_ad, advection_algo)
+
+ChemicalAdvectionPorosityWave.add_marker_per_cell!(u_mark, X_mark, Z_mark, density_mark, xs_ad, zs_ad, advection_algo)
+@btime ChemicalAdvectionPorosityWave.add_marker_per_cell!($u_mark, $X_mark, $Z_mark, $density_mark, $xs_ad, $zs_ad, $advection_algo) setup = (u_mark=[0], X_mark=[0], Z_mark=[0], density_mark=[0], xs_ad=[0], zs_ad=[0], advection_algo=[0]) evals = 1
+# 7.783 s (76 allocations: 43.09 KiB)
+# 67.498 s (1737 allocations: 338.36 KiB)
+# 64.999 s (482 allocations: 341.23 KiB)
+
+# 1.244 s (13 allocations: 4.47 KiB)
+# 1.297 s (37 allocations: 7.11 KiB)ca
+ChemicalAdvectionPorosityWave.remove_marker_per_cell!(u_mark, X_mark, Z_mark, density_mark, xs_ad, zs_ad, advection_algo)
+
+
+
+function remove_marker_per_cell!(u_mark, X_mark, Z_mark, density_mark, x, z, MIC)
+
+    @unpack nx, nz, nx_marker, nz_marker, X_mark_save, Z_mark_save, vc_t_old, vs_t_old, v_t_old, vc_timestep, vs_timestep, v_timestep, norm_mark, u0, X_mark_sort, Z_mark_sort, XZ_mark_sort = MIC
+
+    @inbounds for I in CartesianIndices(density_mark)
+        i, j = Tuple(I)
+        if density_mark[i, j] > round(THRESHOLD_FACTOR_DENSITY_REMOVE*nx_marker*nz_marker / (nx*nz))
+
+            nb_el = size(u0, 3)
+
+            # delete all previous markers inside this cell
+            index_delete::Vector{Int64} = []
+
+            @inbounds for k in axes(X_mark, 1)
+                if Z_mark[k] >= z[i] && Z_mark[k] <= z[i+1] && X_mark[k] >= x[j] && X_mark[k] <= x[j+1]
+                    push!(index_delete, k)
+                end
+            end
+
+            # keep only one third of the element in index_delete but randomly
+
+            index_delete = index_delete[1:round(Int, length(index_delete)/3)]
+
+            # choose half of the markers in the cell
+            marker_to_remove = round(Int, FRACTION_REMOVE_MARKER*length(index_delete))
+            index_delete_choosen::Vector{Int64} = sort(sample(index_delete, marker_to_remove; replace=false))
+
+            deleteat!(X_mark, index_delete_choosen)
+            deleteat!(Z_mark, index_delete_choosen)
+            deleteat!(Z_mark_save, index_delete_choosen)
+            deleteat!(X_mark_save, index_delete_choosen)
+            deleteat!(vc_t_old[1], index_delete_choosen)
+            deleteat!(vs_t_old[1], index_delete_choosen)
+            deleteat!(v_t_old[1], index_delete_choosen)
+            deleteat!(vc_timestep[1], index_delete_choosen)
+            deleteat!(vs_timestep[1], index_delete_choosen)
+            deleteat!(v_timestep[1], index_delete_choosen)
+            deleteat!(vc_t_old[2], index_delete_choosen)
+            deleteat!(vs_t_old[2], index_delete_choosen)
+            deleteat!(v_t_old[2], index_delete_choosen)
+            deleteat!(vc_timestep[2], index_delete_choosen)
+            deleteat!(vs_timestep[2], index_delete_choosen)
+            deleteat!(v_timestep[2], index_delete_choosen)
+            deleteat!(norm_mark, index_delete_choosen)
+            deleteat!(XZ_mark_sort, index_delete_choosen)
+
+            # Preallocate index_delete_compo
+            index_delete_compo = Vector{Int64}(undef, nb_el * length(index_delete_choosen))
+
+            @inbounds for (i, k) in enumerate(index_delete_choosen)
+                for l in 1:nb_el
+                    # Calculate the index in the preallocated array
+                    index = nb_el * (i - 1) + l
+                    index_delete_compo[index] = nb_el * (k - 1) + l
+                end
+            end
+
+            deleteat!(u_mark, index_delete_compo)
+        end
+    end
+end
+
+
+norm_mark[1:20] = [0.9941639703791322, 0.9941639703791322, 0.9941639703791322, 0.9941639703791322, 0.9941639703791322, 0.9941639703791322, 0.9941639703791322, 0.9941639703791322, 0.9941639703791322, 0.9941639703791322, 0.9941639703791322, 0.9941639703791322, 0.9941639703791322, 0.9941639703791322, 0.9941639703791322, 0.9941639703791322, 0.9941639703791322, 0.9941639703791322, 0.9941639703791322, 0.9941639703791322]
+
+
+@unpack nx, nz, nx_marker, nz_marker, X_mark_save, Z_mark_save, vc_t_old, vs_t_old, v_t_old, vc_timestep, vs_timestep, v_timestep, norm_mark, XZ_mark_cell, mark_per_cell, mark_per_cell_array, mark_per_cell_array_el, u0, ratio_marker_x, ratio_marker_z_adjoint, XZ_mark_sort = advection_algo
+
+threshold_density = round(0.25*nx_marker*nz_marker / (nx*nz))
+
+i = 100
+j = 50
+
+
+index_previous = size(X_mark, 1)
+nb_el = size(u0, 3)
+
+# add evenly spaced markers in the cell on all arrays
+XZ_mark_cell .= ((range(zs_ad_vec[i], length=round(Int, nz_marker/nz), stop= zs_ad_vec[i+1]))' .*  ratio_marker_x)[:]
+append!(Z_mark, XZ_mark_cell)
+XZ_mark_cell .= (range(xs_ad_vec[j], length=round(Int, nx_marker/nx), stop= xs_ad_vec[j+1]) .*  ratio_marker_z_adjoint)[:]
+append!(X_mark, XZ_mark_cell)
+append!(Z_mark_save, mark_per_cell_array)
+append!(X_mark_save, mark_per_cell_array)
+append!(vc_t_old[1], mark_per_cell_array)
+append!(vs_t_old[1], mark_per_cell_array)
+append!(v_t_old[1], mark_per_cell_array)
+append!(vc_timestep[1], mark_per_cell_array)
+append!(vs_timestep[1], mark_per_cell_array)
+append!(v_timestep[1], mark_per_cell_array)
+append!(vc_t_old[2], mark_per_cell_array)
+append!(vs_t_old[2], mark_per_cell_array)
+append!(v_t_old[2], mark_per_cell_array)
+append!(vc_timestep[2], mark_per_cell_array)
+append!(vs_timestep[2], mark_per_cell_array)
+append!(v_timestep[2], mark_per_cell_array)
+append!(u_mark, mark_per_cell_array_el)
+
+# push each value of XZ_mark_cell in XZ_mark_sort
+append!(XZ_mark_sort, [(0.0, 0.0) for _ in axes(XZ_mark_cell, 1)])
+
+prev_X_mark = @view X_mark[1:index_previous]
+prev_Z_mark = @view Z_mark[1:index_previous]
+
+new_X_mark = @view X_mark[index_previous+1:end]
+new_Z_mark = @view Z_mark[index_previous+1:end]
+
+
+k = 1
+
+norm_mark .= sqrt.((prev_X_mark .- new_X_mark[k]).^2 .+ (prev_Z_mark .- new_Z_mark[k]).^2)
+
+norm_mark_copy = copy(norm_mark)
+
+@inbounds for l in axes(norm_mark, 1)
+    norm_mark[l] = sqrt(sum(abs2, ((prev_X_mark[l] - new_X_mark[k]), (prev_Z_mark[l] - new_Z_mark[k]))))
+end
+
+norm_mark_copy == norm_mark
+
+function norm_test(prev_X_mark, prev_Z_mark, new_X_mark, new_Z_mark, norm_mark)
+    k = 1
+    norm_mark .= sqrt.((prev_X_mark .- new_X_mark[k]).^2 .+ (prev_Z_mark .- new_Z_mark[k]).^2)
+end
+
+function norm_test2(prev_X_mark, prev_Z_mark, new_X_mark, new_Z_mark, norm_mark)
+    k = 1
+    @inbounds for l in axes(norm_mark, 1)
+        norm_mark[l] = sqrt(sum(abs2, ((prev_X_mark[l] - new_X_mark[k]), (prev_Z_mark[l] - new_Z_mark[k]))))
+    end
+
+end
+
+@btime norm_test($prev_X_mark, $prev_Z_mark, $new_X_mark, $new_Z_mark, $norm_mark)
+@btime norm_test2($prev_X_mark, $prev_Z_mark, $new_X_mark, $new_Z_mark, $norm_mark)
+
+index_minimum = findmin(norm_mark)[2]
+index_minimum = argmin(norm_mark)
+
+
+# rewrite the same using norm from LinearAlgebra
+
+@time norm_mark .= norm.(prev_X_mark .- new_X_mark[k], prev_Z_mark .- new_Z_mark[k])
+
+
+
+
+using Cthulhu
+
+@descend ChemicalAdvectionPorosityWave.add_marker_per_cell!(u_mark, X_mark, Z_mark, density_mark, xs_ad, zs_ad, advection_algo)
+
+@unpack nx, nz, nx_marker, nz_marker, X_mark_save, Z_mark_save, vc_t_old, vs_t_old, v_t_old, vc_timestep, vs_timestep, v_timestep, norm_mark, XZ_mark_cell, mark_per_cell, mark_per_cell_array, mark_per_cell_array_el, u0 = advection_algo
+
+
+    i, j = 100, 50
+
+        index_previous = size(X_mark, 1)
+        nb_el = size(u0, 3)
+
+        # add evenly spaced markers in the cell on all arrays
+        XZ_mark_cell .= ((range(zs_ad[i], length=round(Int, nz_marker/nz), stop= zs_ad[i+1]))' .*  ones(round(Int,nx_marker/nx)))[:]
+        append!(Z_mark, XZ_mark_cell)
+        XZ_mark_cell .= (range(xs_ad[j], length=round(Int, nx_marker/nx), stop= xs_ad[j+1]) .*  ones(round(Int,nz_marker/nz))')[:]
+        append!(X_mark, (range(xs_ad[j], length=round(Int, nx_marker/nx), stop= xs_ad[j+1]) .*  ones(round(Int,nz_marker/nz))')[:])
+        append!(Z_mark_save, mark_per_cell_array)
+        append!(X_mark_save, mark_per_cell_array)
+        append!(vc_t_old[1], mark_per_cell_array)
+        append!(vs_t_old[1], mark_per_cell_array)
+        append!(v_t_old[1], mark_per_cell_array)
+        append!(vc_timestep[1], mark_per_cell_array)
+        append!(vs_timestep[1], mark_per_cell_array)
+        append!(v_timestep[1], mark_per_cell_array)
+        append!(vc_t_old[2], mark_per_cell_array)
+        append!(vs_t_old[2], mark_per_cell_array)
+        append!(v_t_old[2], mark_per_cell_array)
+        append!(vc_timestep[2], mark_per_cell_array)
+        append!(vs_timestep[2], mark_per_cell_array)
+        append!(v_timestep[2], mark_per_cell_array)
+        append!(u_mark, mark_per_cell_array_el)
+
+        prev_X_mark = @view X_mark[1:index_previous]
+        prev_Z_mark = @view Z_mark[1:index_previous]
+
+        new_X_mark = @view X_mark[index_previous+1:end]
+        new_Z_mark = @view Z_mark[index_previous+1:end]
+
+        k = 2
+
+        norm_mark .= (prev_X_mark .- new_X_mark[k]).^2 .+ (prev_Z_mark .- new_Z_mark[k]).^2
+
+
+
+
+
+
+
+        index_delete_compo::Vector{Int64} = []
+        @inbounds for k in index_delete
+            @inbounds for l in 1:nb_el
+                push!(index_delete_compo, nb_el * (k - 1) + l)
+            end
+        end 
+
+
+# compo_0 = copy(domain.compo_f)
+
+# for I in CartesianIndices(domain.compo_f[:,:,1])
+#     r = sqrt((grid.grid[1][I] - x0)^2 + (grid.grid[2][I] - z0)^2)
+#     if r <= R
+#         for k in 1:size(domain.compo_f, 3)
+#             compo_0[I[1], I[2], k] = compo_basalt[k]
+#         end
+#     else
+#         for k in 1:size(domain.compo_f, 3)
+#             compo_0[I[1], I[2], k] = compo_andesit[k]
+#         end
+#     end
+# end
+
+# mass_ini = sum(domain.ϕ .* compo_0[:,:,1])
+# mass_final = sum(sol[end][:,:,2] .* model.compaction_ϕ .* domain.compo_f[:,:,1])
+
+# println("Mass conservation: $(mass_final / mass_ini * 100) %")
+
+
+
+
+
+
+test = ones(10)
+resize!(test, st100)
