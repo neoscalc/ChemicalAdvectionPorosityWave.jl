@@ -25,14 +25,14 @@ function main()
     cd(@__DIR__)
 
     # grid
-    nx = 201
-    ny = 201
+    nx = 200
+    ny = 200
     Lx = 1.0
     Ly = 1.0
-    Δx = Lx / (nx-1)
-    Δy = Ly / (ny-1)
-    x = range(0, length=nx, stop= Lx)
-    y = range(0, length=ny, stop= Ly)
+    Δx = Lx / nx
+    Δy = Ly / ny
+    x = range(Δx/2, length=nx, stop= Lx-Δx/2)
+    y = range(Δy/2, length=ny, stop= Ly-Δy/2)
     grid = (x' .* ones(ny), ones(nx)' .* y)
     tmax = 0.8
 
@@ -97,6 +97,8 @@ function main()
             # writedlm("Data/MIC_half.txt", u_MIC)
         end
 
+        println(sum(u_UW .* Δx .* Δy) / sum(u0 .* Δx .* Δy))
+
         l = @layout [a b; c d]
         p1 = heatmap(x, y, u_UW, title="Upwind")
         p2 = heatmap(x, y, u_MIC, title="MIC")
@@ -138,7 +140,6 @@ function main()
     println("maximum value of MIC scheme: ", maximum(u_MIC))
 
     # print error of each scheme using the mean square error
-    # error_UW = 1/(nx*ny) * np.sum((C0 - u_UW)**2)
 
     error_UW = sum((u0 .- u_UW).^2) / (nx*ny)
     error_WENO = sum((u0 .- u_WENO).^2) / (nx*ny)
