@@ -3,7 +3,7 @@ using ChemicalAdvectionPorosityWave
 # define the resolution of the grid and the size of the model
 grid = Grid(nx=100, nz=200, Lx=450.0u"m", Lz=900.0u"m", tfinal=1.5u"Myr")
 
-domain = Domain(x=grid.x, z=grid.z, nb_element=9)
+domain = Domain(x=grid.x, z=grid.z, nb_element=10)
 
 # gaussian anomaly as initial conditions
 a = 0.05 # max porosity in the gaussian
@@ -15,7 +15,7 @@ bz = grid.Lz÷6 # z position of the gaussian in m
 domain.ϕ .= 1e-3 .+ a .* exp.(-((grid.x' .* ones(size(grid.z)) .- bx).^2 .+ (ones(size(grid.x))' .* grid.z .- bz).^2) ./ (σ)^2)
 
 # ETN, Basalt D. Giordano and D.B. Dingwell, 2003 renormalised to 100 wt%
-# SiO2, TiO2, Al2O3, FeO, MgO, CaO, Na2O, K2O
+# SiO2, TiO2, Al2O3, FeO, MgO, CaO, Na2O, K2O, tracer
 compo_basalt = [48.32,
                 1.65,
                 16.72,
@@ -24,12 +24,13 @@ compo_basalt = [48.32,
                 10.75,
                 3.85,
                 1.99,
-                1.00
+                1.00,
+                50.0
                 ]
 
 
 # Andesite, Neuville et al, 1992 renormalised to 100 wt%
-# SiO2, TiO2, Al2O3, FeO, MgO, CaO, Na2O, K2O
+# SiO2, TiO2, Al2O3, FeO, MgO, CaO, Na2O, K2O, tracer
 compo_andesit = [59.87,
                  0.82,
                  16.93,
@@ -38,7 +39,8 @@ compo_andesit = [59.87,
                  5.70,
                  3.76,
                  1.36,
-                 3
+                 3,
+                 100.0
                  ]
 
 x0 = grid.Lx÷2  # x position of the gaussian in m
