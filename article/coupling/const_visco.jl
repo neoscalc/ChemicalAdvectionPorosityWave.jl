@@ -16,7 +16,7 @@ bz = grid.Lz÷6 # z position of the gaussian in m
 domain.ϕ .= 1e-3 .+ a .* exp.(-((grid.x' .* ones(size(grid.z)) .- bx).^2 .+ (ones(size(grid.x))' .* grid.z .- bz).^2) ./ (σ)^2)
 
 # ETN, Basalt D. Giordano and D.B. Dingwell, 2003 renormalised to 100 wt%
-# SiO2, TiO2, Al2O3, FeO, MgO, CaO, Na2O, K2O, tracer
+# SiO2, TiO2, Al2O3, FeO, MgO, CaO, Na2O, K2O, H2O, tracer
 compo_basalt = [48.32,
                 1.65,
                 16.72,
@@ -31,7 +31,7 @@ compo_basalt = [48.32,
 
 
 # Andesite, Neuville et al, 1992 renormalised to 100 wt%
-# SiO2, TiO2, Al2O3, FeO, MgO, CaO, Na2O, K2O, tracer
+# SiO2, TiO2, Al2O3, FeO, MgO, CaO, Na2O, K2O, H2O, tracer
 compo_andesit = [59.87,
                  0.82,
                  16.93,
