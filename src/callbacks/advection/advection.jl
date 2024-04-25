@@ -22,7 +22,7 @@ function advection_call_func(u, t, integrator)
 
     @unpack grid, domain, parameters, advection = integrator.p
     @unpack compo_f, compo_f_prev = domain
-    @unpack compaction_t, compaction_ϕ, compaction_l, v_f = parameters
+    @unpack compaction_t, compaction_ϕ, compaction_l, v_f, vc_f = parameters
     @unpack algo_name = advection
     @unpack ϕ_ini = parameters
 
@@ -30,18 +30,17 @@ function advection_call_func(u, t, integrator)
     Δt = (integrator.t - integrator.tprev)
 
     if algo_name == "Upwind"
-        @unpack vc_f = advection
-        velocity_to_center!(vc_f, v_f)
+        # @unpack vc_f = advection
+        # velocity_to_center!(vc_f, v_f)
 
         upwind_scheme!(compo_f, compo_f_prev, vc_f, Δt, grid, parameters)
     elseif algo_name == "WENO"
-        @unpack vc_f = advection
-        velocity_to_center!(vc_f, v_f)
+        # @unpack vc_f = advection
+        # velocity_to_center!(vc_f, v_f)
 
         WENO_scheme!(compo_f, vc_f, advection, grid, parameters, Δt; method=:JS)
     elseif algo_name == "Semi-Lagrangian"
-        @unpack vc_previous, vc_f = advection
-        velocity_to_center!(vc_f, v_f)
+        @unpack vc_previous = advection
 
         semi_lagrangian!(compo_f, advection, vc_f, vc_previous, Δt, grid, parameters, ϕ, ϕ_ini; method=:quasi_monotone)
 
@@ -56,9 +55,7 @@ function advection_call_func(u, t, integrator)
 
             MIC_initialize_markers!(advection.u_mark, compo_f, advection, parameters)
         end
-        @unpack vc_f, density_mark, u_mark, X_mark, Z_mark= advection
-
-        velocity_to_center!(vc_f, v_f)
+        @unpack density_mark, u_mark, X_mark, Z_mark= advection
 
         MIC!(compo_f, v_f, vc_f, advection, parameters, Δt, grid)
 

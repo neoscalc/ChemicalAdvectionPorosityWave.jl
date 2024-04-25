@@ -80,7 +80,9 @@ end
     u0::Array{Float64, 3} = zeros(grid.nz, grid.nx, 2)
     du0::Array{Float64, 3} = similar(u0)
     q_f::NamedTuple{(:x, :z), Tuple{Matrix{Float64}, Matrix{Float64}}} = (x=zeros(grid.nz, grid.nx+1),z=zeros(grid.nz+1, grid.nx))
+    qc_f::NamedTuple{(:x, :z), Tuple{Matrix{Float64}, Matrix{Float64}}} = (x=zeros(grid.nz, grid.nx),z=zeros(grid.nz, grid.nx))
     v_f::NamedTuple{(:x, :z), Tuple{Matrix{Float64}, Matrix{Float64}}} = (x=zeros(grid.nz, grid.nx+1),z=zeros(grid.nz+1, grid.nx))
+    vc_f::NamedTuple{(:x, :z), Tuple{Matrix{Float64}, Matrix{Float64}}} = (x=zeros(grid.nz, grid.nx),z=zeros(grid.nz, grid.nx))
     v_s::NamedTuple{(:x, :z), Tuple{Matrix{Float64}, Matrix{Float64}}} = (x=zeros(grid.nz, grid.nx+1),z=zeros(grid.nz+1, grid.nx))
     vc_s::NamedTuple{(:x, :z), Tuple{Matrix{Float64}, Matrix{Float64}}} = (x=zeros(grid.nz, grid.nx),z=zeros(grid.nz, grid.nx))
     g::Float64=-9.80665  # gravity constant, m/s²
