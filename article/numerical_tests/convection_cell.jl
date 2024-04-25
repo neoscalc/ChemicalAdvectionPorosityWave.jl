@@ -13,12 +13,16 @@ include("Code/UW_scheme.jl")
 include("Code/SL_scheme.jl")
 include("Code/WENO_scheme.jl")
 include("Code/MIC_scheme.jl")
+include("Code/WENO_scheme_conservative.jl")
+include("Code/UW_scheme_conservative.jl")
 
 using .Model
 using .UW_scheme
 using .SL_scheme
 using .WENO_scheme
 using .MIC_scheme
+using .WENO_scheme_conservative
+using .UW_scheme_conservative
 
 function main()
 
@@ -61,7 +65,8 @@ function main()
     Param = Model.ModelParameters(u0=u0, Δx=Δx, Δy=Δy, Lx=Lx, Ly=Ly, vx0=vx0, vy0=vy0, tmax=tmax, Δt=Δt)
 
     SL = Model.SemiLagrangianScheme(nx=nx, ny=ny, u0=u0);
-    WENO = Model.WENOScheme(nx=nx, ny=ny, u0=u0);
+    # WENO = Model.WENOScheme(nx=nx, ny=ny, u0=u0);
+    WENO = Model.WENOSchemeCons(nx=nx, ny=ny, u0=u0);
     UW = Model.UWScheme(nx=nx, ny=ny, u0=u0)
     MIC = Model.MICScheme(u0=u0,nx=nx, ny=ny, Lx=Lx, Ly=Ly)
 
@@ -78,9 +83,10 @@ function main()
 
     for t in tqdm(0:Param.Δt:Param.tmax)
 
-        UW_scheme.Upwind!(u_UW, UW.u_old, Param.v0, Param.Δt, Param)
+        # UW_scheme.Upwind!(u_UW, UW.u_old, Param.v0, Param.Δt, Param)
+        UW_scheme_conservative.Upwind!(u_UW, UW.u_old, Param.v0, Param.Δt, Param)
         SL_scheme.semi_lagrangian!(u_SL_QM, SL, Param.v0, Param.v0, Param; method="quasi-monotone")
-        WENO_scheme.WENO_scheme!(u_WENO, Param.v0, WENO, Param; method=:Z)
+        WENO_scheme_conservative.WENO_scheme!(u_WENO, Param.v0, WENO, Param; method=:JS)
         MIC_scheme.MIC!(u_MIC, MIC,Param.v0, Param)
 
         change_rotation = false
@@ -97,7 +103,7 @@ function main()
             # writedlm("Data/MIC_half.txt", u_MIC)
         end
 
-        println(sum(u_UW .* Δx .* Δy) / sum(u0 .* Δx .* Δy))
+        # println(sum(u_UW .* Δx .* Δy) / sum(u0 .* Δx .* Δy))
 
         l = @layout [a b; c d]
         p1 = heatmap(x, y, u_UW, title="Upwind")

@@ -8,16 +8,38 @@ import Base.Threads.@threads
     f::Array{Float64, 3} = similar(u0, Float64)
     fP::Array{Float64, 3} = similar(u0, Float64)  # positive flux
     fN::Array{Float64, 3} = similar(u0, Float64)  # negative flux
-    fL::Array{Float64, 3} = similar(u0, Float64)
-    fR::Array{Float64, 3} = similar(u0, Float64)
-    fT::Array{Float64, 3} = similar(u0, Float64)
-    fB::Array{Float64, 3} = similar(u0, Float64)
+    fL::Array{Float64, 3} = zeros(size(u0,1), size(u0,2)+1, size(u0,3))
+    fR::Array{Float64, 3} = zeros(size(u0,1), size(u0,2)+1, size(u0,3))
+    fT::Array{Float64, 3} = zeros(size(u0,1)+1, size(u0,2), size(u0,3))
+    fB::Array{Float64, 3} = zeros(size(u0,1)+1, size(u0,2), size(u0,3))
     r::Array{Float64, 3} = similar(u0, Float64)
     u_JS::Array{Float64, 3} = similar(u0, Float64)
     u_Z::Array{Float64, 3} = similar(u0, Float64)
     ut::Array{Float64, 3} = similar(u0, Float64)  # temporary array
     vc_f::NamedTuple{(:x, :z), Tuple{Matrix{Float64}, Matrix{Float64}}} = (x=zeros(nz, nx),z=zeros(nz, nx))
     algo_name::String = "WENO"
+end
+
+function Lax_Friedrichs_flux_x!(fP, fN, f, u, v, nx, nz)
+    for I = CartesianIndices((nz, nx, size(u,3)))
+        i,j,k = Tuple(I)
+        jw, jww = limit_periodic(j-1, nx), limit_periodic(j-2, nx)
+        je, jee = limit_periodic(j+1, nx), limit_periodic(j+2, nx)
+        α = max(abs(v[i,jww]), abs(v[i,jw]), abs(v[i,j]), abs(v[i,je]), abs(v[i,jee]))
+        fP[I] = 1/2 * (f[I] + α * u[I])
+        fN[I] = 1/2 * (f[I] - α * u[I])
+    end
+end
+
+function Lax_Friedrichs_flux_z!(fP, fN, f, u, v, nx, nz)
+    for I = CartesianIndices((nz, nx, size(u,3)))
+        i,j,k = Tuple(I)
+        is, iss = limit_periodic(i-1, nz), limit_periodic(i-2, nz)
+        in, inn = limit_periodic(i+1, nz), limit_periodic(i+2, nz)
+        α = max(abs(v[iss,j]), abs(v[is,j]), abs(v[i,j]), abs(v[in,j]), abs(v[inn,j]))
+        fP[I] = 1/2 * (f[I] + α * u[I])
+        fN[I] = 1/2 * (f[I] - α * u[I])
+    end
 end
 
 
@@ -124,81 +146,98 @@ function WENO_u_downwind(u1, u2, u3, u4, u5, method)
     return fR
 end
 
-function WENO_flux_upwind_x!(fL, u, nx, method)
-    @inbounds @threads for I = CartesianIndices(u)
+function WENO_flux_upwind_x!(fL, u, nx, nz, method)
+    @inbounds @threads for I = CartesianIndices((nz, 0:nx, size(u,3)))
         i,j,k = Tuple(I)
         jw, jww = limit_periodic(j-1, nx), limit_periodic(j-2, nx)
         je, jee = limit_periodic(j+1, nx), limit_periodic(j+2, nx)
+        jc = limit_periodic(j, nx)
+        ic = limit_periodic(i, nz)
 
-        u1 = u[i, jww, k]
-        u2 = u[i, jw, k]
-        u3 = u[i, j, k]
-        u4 = u[i, je, k]
-        u5 = u[i, jee, k]
 
-        fL[I] = WENO_u_upwind(u1, u2, u3, u4, u5, method)
+        u1 = u[ic, jww, k]
+        u2 = u[ic, jw, k]
+        u3 = u[ic, jc, k]
+        u4 = u[ic, je, k]
+        u5 = u[ic, jee, k]
+
+        fL[i, j+1,k] = WENO_u_upwind(u1, u2, u3, u4, u5, method)
     end
 end
 
-function WENO_flux_upwind_z!(fB, u, nz, method)
-    @inbounds @threads for I = CartesianIndices(u)
+function WENO_flux_upwind_z!(fB, u, nx, nz, method)
+    @inbounds @threads for I = CartesianIndices((0:nz, nx, size(u, 3)))
         i,j,k = Tuple(I)
         iw, iww = limit_periodic(i-1, nz), limit_periodic(i-2, nz)
         ie, iee = limit_periodic(i+1, nz), limit_periodic(i+2, nz)
+        ic = limit_periodic(i, nz)
+        jc = limit_periodic(j, nx)
 
-        u1 = u[iww, j, k]
-        u2 = u[iw, j, k]
-        u3 = u[i, j, k]
-        u4 = u[ie, j, k]
-        u5 = u[iee, j, k]
+        u1 = u[iww, jc, k]
+        u2 = u[iw, jc, k]
+        u3 = u[ic, jc, k]
+        u4 = u[ie, jc, k]
+        u5 = u[iee, jc, k]
 
-        fB[I] = WENO_u_upwind(u1, u2, u3, u4, u5, method)
+        fB[i+1, j,k] = WENO_u_upwind(u1, u2, u3, u4, u5, method)
     end
 end
 
-function WENO_flux_downwind_x!(fR, u, nx, method)
-    @inbounds @threads for I = CartesianIndices(u)
+function WENO_flux_downwind_x!(fR, u, nx, nz, method)
+    @inbounds @threads for I = CartesianIndices((nz, nx+1, size(u,3)))
         i,j,k = Tuple(I)
         jw, jww = limit_periodic(j-1, nx), limit_periodic(j-2, nx)
         je, jee = limit_periodic(j+1, nx), limit_periodic(j+2, nx)
+        jc = limit_periodic(j, nx)
+        ic = limit_periodic(i, nz)
 
-        u1 = u[i, jww, k]
-        u2 = u[i, jw, k]
-        u3 = u[i, j, k]
-        u4 = u[i, je, k]
-        u5 = u[i, jee, k]
+        u1 = u[ic, jww, k]
+        u2 = u[ic, jw, k]
+        u3 = u[ic, jc, k]
+        u4 = u[ic, je, k]
+        u5 = u[ic, jee, k]
 
-        fR[I] = WENO_u_downwind(u1, u2, u3, u4, u5, method)
+        fR[i, j,k] = WENO_u_downwind(u1, u2, u3, u4, u5, method)
     end
 end
 
-function WENO_flux_downwind_z!(fT, u, nz, method)
-    @inbounds @threads for I = CartesianIndices(u)
+function WENO_flux_downwind_z!(fT, u, nx, nz, method)
+    @inbounds @threads for I = CartesianIndices((nz+1, nx, size(u,3)))
         i,j,k = Tuple(I)
         iw, iww = limit_periodic(i-1, nz), limit_periodic(i-2, nz)
         ie, iee = limit_periodic(i+1, nz), limit_periodic(i+2, nz)
+        ic = limit_periodic(i, nz)
+        jc = limit_periodic(j, nx)
 
-        u1 = u[iww, j, k]
-        u2 = u[iw, j, k]
-        u3 = u[i, j, k]
-        u4 = u[ie, j, k]
-        u5 = u[iee, j, k]
+        u1 = u[iww, jc, k]
+        u2 = u[iw, jc, k]
+        u3 = u[ic, jc, k]
+        u4 = u[ie, jc, k]
+        u5 = u[iee, jc, k]
 
-        fT[I] = WENO_u_downwind(u1, u2, u3, u4, u5, method)
+        fT[i,j,k] = WENO_u_downwind(u1, u2, u3, u4, u5, method)
     end
 end
 
-function rhs!(u, vx, vz, WENO, grid, parameters, method)
+function rhs!(u, uprev, vx, vz, WENO, grid, parameters, method)
 
     @unpack nx, nz = grid
     @unpack Δx_ad, Δz_ad  = parameters
-    @unpack fL, fR, fB, fT, r = WENO
+    @unpack f, fP, fN, fL, fR, fB, fT, r = WENO
 
-    WENO_flux_upwind_x!(fL, u, nx, method)
-    WENO_flux_downwind_x!(fR, u, nx, method)
+    f .= vx .* u
 
-    WENO_flux_upwind_z!(fB, u, nz, method)
-    WENO_flux_downwind_z!(fT, u, nz, method)
+    Lax_Friedrichs_flux_x!(fP, fN, f, u, vx, nx, nz)
+
+    WENO_flux_upwind_x!(fL, fP, nx, nz, method)
+    WENO_flux_downwind_x!(fR, fN, nx, nz, method)
+
+    f .= vz .* u
+
+    Lax_Friedrichs_flux_z!(fP, fN, f, u, vz, nx, nz)
+
+    WENO_flux_upwind_z!(fB, fP, nx, nz, method)
+    WENO_flux_downwind_z!(fT, fN, nx, nz, method)
 
     @inbounds @threads for I = CartesianIndices(u)
         i,j,k = Tuple(I)
@@ -206,10 +245,14 @@ function rhs!(u, vx, vz, WENO, grid, parameters, method)
         jw, je = limit_periodic(j-1, nx), limit_periodic(j+1, nx)
         is, in = limit_periodic(i-1, nz), limit_periodic(i+1, nz)
 
-        r[I] = max(vx[i,j], 0) * (fL[i, j, k] - fL[i, jw, k]) / Δx_ad +
-               min(vx[i,j], 0) * (fR[i, je, k] - fR[i, j, k]) / Δx_ad +
-               max(vz[i,j], 0) * (fB[i, j, k] - fB[is, j, k]) / Δz_ad +
-               min(vz[i,j], 0) * (fT[in, j, k] - fT[i, j, k]) / Δz_ad
+        r[I] = (fL[i,j+1,k] - fL[i,j,k]) / Δx_ad + (fR[i,j+1,k] - fR[i,j,k]) / Δx_ad + (fB[i+1,j,k] - fB[i,j,k]) / Δz_ad + (fT[i+1,j,k] - fT[i,j,k]) / Δz_ad
+
+        # add source term as upwind
+        if uprev[I] > 0
+            r[I] -= uprev[I] * (vz[i,j] - vz[is,j]) / Δz_ad + uprev[I] * (vx[i,j] - vx[i,jw]) / Δx_ad
+        else
+            r[I] -= uprev[I] * (vz[in,j] - vz[i,j]) / Δz_ad + uprev[I] * (vx[i,je] - vx[i,j]) / Δx_ad
+        end
     end
 end
 
@@ -219,19 +262,19 @@ function WENO_scheme!(u, v, WENO, grid, parameters, Δt; method="JS")
 
     @unpack ut, r = WENO
 
-    rhs!(u, v[:x], v[:z], WENO, grid, parameters, method)
+    rhs!(u, u, v[:x], v[:z], WENO, grid, parameters, method)
 
     @inbounds @threads for I = CartesianIndices(u)
         ut[I] = u[I] - Δt * r[I]
     end
 
-    rhs!(ut, v[:x], v[:z], WENO, grid, parameters, method)
+    rhs!(ut, u, v[:x], v[:z], WENO, grid, parameters, method)
 
     @inbounds @threads for I = CartesianIndices(u)
         ut[I] = 0.75 * u[I] + 0.25 * ut[I] - 0.25 * Δt * r[I]
     end
 
-    rhs!(ut, v[:x], v[:z], WENO, grid, parameters, method)
+    rhs!(ut, u, v[:x], v[:z], WENO, grid, parameters, method)
 
     @inbounds @threads for I = CartesianIndices(u)
         u[I] = 1.0/3.0 * u[I] + 2.0/3.0 * ut[I] - (2.0/3.0) * Δt * r[I]

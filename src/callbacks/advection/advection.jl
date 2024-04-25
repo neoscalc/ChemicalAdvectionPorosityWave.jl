@@ -65,13 +65,24 @@ function advection_call_func(u, t, integrator)
         reseeding_marker!(u_mark, X_mark, Z_mark, density_mark, advection, parameters)
     end
 
+    # # normalize values to 100%
+    # sum_element = sum(compo_f[:,:,1:end-1], dims=3)
+
+    # for I = CartesianIndices(sum_element)
+    #     i, j = Tuple(I)
+    #     # threshold for composition and porosity
+    #     for k = 1:(size(domain.compo_f, 3)-1)
+    #         compo_f[i,j,k] = compo_f[i,j,k] / sum_element[I] * 100
+    #     end
+    # end
+
     # normalize values to 100%
-    sum_element = sum(compo_f[:,:,1:end-1], dims=3)
+    sum_element = sum(compo_f, dims=3)
 
     for I = CartesianIndices(sum_element)
         i, j = Tuple(I)
         # threshold for composition and porosity
-        for k = 1:(size(domain.compo_f, 3)-1)
+        for k = axes(compo_f, 3)
             compo_f[i,j,k] = compo_f[i,j,k] / sum_element[I] * 100
         end
     end

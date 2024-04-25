@@ -61,6 +61,23 @@ end
     ut::Array{Float64, 2} = similar(u0, Float64)  # temporary array
 end
 
+@with_kw struct WENOSchemeCons
+    nx::Int
+    ny::Int
+    u0::Array{Float64, 2}
+    f::Array{Float64, 2} = zeros(ny, nx)
+    fP::Array{Float64, 2} = zeros(ny, nx)  # positive flux
+    fN::Array{Float64, 2} = zeros(ny, nx)  # negative flux
+    fL::Array{Float64, 2} = zeros(ny, nx+1)
+    fR::Array{Float64, 2} = zeros(ny, nx+1)
+    fT::Array{Float64, 2} = zeros(ny+1, nx)
+    fB::Array{Float64, 2} = zeros(ny+1, nx)
+    r::Array{Float64, 2} = zeros(ny, nx)
+    u_JS::Array{Float64, 2} = copy(u0)
+    u_Z::Array{Float64, 2} = copy(u0)
+    ut::Array{Float64, 2} = similar(u0, Float64)  # temporary array
+end
+
 @with_kw struct MICScheme
     u0::Array{Float64, 2}
     nx::Int
