@@ -2,7 +2,7 @@ using ChemicalAdvectionPorosityWave
 
 # define the resolution of the grid and the size of the model
 # grid = Grid(nx=200, nz=400, Lx=450.0u"m", Lz=900.0u"m", tfinal=1.5u"Myr")
-grid = Grid(nx=100, nz=200, Lx=450.0u"m", Lz=900.0u"m", tfinal=0.5u"Myr")
+grid = Grid(nx=100, nz=200, Lx=450.0u"m", Lz=900.0u"m", tfinal=1.5u"Myr")
 
 domain = Domain(x=grid.x, z=grid.z, nb_element=10)
 
@@ -63,7 +63,7 @@ for I in CartesianIndices(domain.compo_f[:,:,1])
 end
 
 # to choose the advection schemes, 4 options: UW (upwind), WENO (WENO-5), SL (quasi-monotone semi-Lagrangian) and MIC (marker-in-cell)
-algo_name = "WENO"
+algo_name = "MIC"
 
 # Courant number has to be lower than 1 for upwind and WENO-5, can be higher for MIC and QMSL
 Courant_nb = 0.7
@@ -95,7 +95,7 @@ output_call = PresetTimeCallback(save_time,save_data)
 steplimiter = StepsizeLimiter(dtmaxC;safety_factor=10//10,max_step=false,cached_dtcache=0.0)
 
 # define the order in which to call the callback functions
-callbacks = CallbackSet(velocity_call, advection_call, steplimiter, plotting)
+callbacks = CallbackSet(velocity_call, advection_call, steplimiter, plotting, output_call)
 # callbacks = CallbackSet(velocity_call, advection_call, steplimiter, output_call)
 
 
@@ -117,8 +117,8 @@ t = [0, grid.tfinal / compaction_t]  # time scale
 
 println("Defining Jacobian sparcity...")
 # compute the jacobian sparcity using Symbolics
-jac_sparsity = Symbolics.jacobian_sparsity((du, u)->porosity_wave(du, u, p, 0.0), du0, u0);
-println("Done")
+# jac_sparsity = Symbolics.jacobian_sparsity((du, u)->porosity_wave(du, u, p, 0.0), du0, u0);
+# println("Done")
 
 # define an odefunction with the sparsity of the Jacobian
 f = ODEFunction(porosity_wave;jac_prototype=float.(jac_sparsity));
