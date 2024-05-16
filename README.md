@@ -20,15 +20,11 @@ pkg> add https://github.com/neoscalc/ChemicalAdvectionPorosityWave.jl
 
 This will install the package ChemicalAdvectionPorosityWave. You can copy and run the file contained in article/coupling/const_visco.jl or run the following code:
 
-
 ```julia
 using ChemicalAdvectionPorosityWave
 
-# path to save the output data (to be define by the user)
-path_hdf5 = joinpath([pwd(),"output.h5"])
-
 # define the resolution of the grid and the size of the model
-grid = Grid(nx=200, nz=400, Lx=450u"m", Lz=900u"m", tfinal=1.5u"Myr")
+grid = Grid(nx=100, nz=200, Lx=450.0u"m", Lz=900.0u"m", tfinal=1.5u"Myr")
 
 domain = Domain(x=grid.x, z=grid.z, nb_element=9)
 
@@ -42,7 +38,7 @@ bz = grid.Lz÷6 # z position of the gaussian in m
 domain.ϕ .= 1e-3 .+ a .* exp.(-((grid.x' .* ones(size(grid.z)) .- bx).^2 .+ (ones(size(grid.x))' .* grid.z .- bz).^2) ./ (σ)^2)
 
 # ETN, Basalt D. Giordano and D.B. Dingwell, 2003 renormalised to 100 wt%
-# SiO2, TiO2, Al2O3, FeO, MgO, CaO, Na2O, K2O
+# SiO2, TiO2, Al2O3, FeO, MgO, CaO, Na2O, K2O, H2O
 compo_basalt = [48.32,
                 1.65,
                 16.72,
@@ -54,9 +50,8 @@ compo_basalt = [48.32,
                 1.00
                 ]
 
-
 # Andesite, Neuville et al, 1992 renormalised to 100 wt%
-# SiO2, TiO2, Al2O3, FeO, MgO, CaO, Na2O, K2O
+# SiO2, TiO2, Al2O3, FeO, MgO, CaO, Na2O, K2O, H2O
 compo_andesit = [59.87,
                  0.82,
                  16.93,
@@ -92,11 +87,17 @@ algo_name = "WENO"
 # Courant number has to be lower than 1 for upwind and WENO-5, can be higher for MIC and QMSL
 Courant_nb = 0.7
 
+# path to save the output data
+path_hdf5 = joinpath(@__DIR__,"output_$(grid.nx)x$(grid.nz)_$(algo_name)_C_$(Courant_nb)_1.5Myr_test.h5")
+
+@show grid.nx, grid.nz
+@show algo_name
+
 # define structures for the models
 advection_algo = advection(;algo_name=algo_name, grid=grid, compo_f=domain.compo_f)
 model = Model(grid=grid, domain=domain, advection_algo=advection_algo, path_data=path_hdf5, Courant=Courant_nb)
 
-# define callbacks to call at the end of each timestep of the two-phase flow
+# define callbacks to call at the end of each timestep
 
 # compute flux and velocity fields for the solid and fluid phase
 velocity_call = FunctionCallingCallback(velocity_call_func; funcat=Vector{Float64}(), func_everystep=true, func_start = false, tdir=1);
@@ -110,7 +111,7 @@ plotting = FunctionCallingCallback(plotting_tpf; funcat=Vector{Float64}(), func_
 # define saving output at 4 time -> 0.35 Myr, 0.80 Myr, 1.20 Myr and at the final timestep
 @unpack compaction_t = model
 save_time = [ustrip(u"s", 0.35u"Myr") / compaction_t , ustrip(u"s", 0.80u"Myr") / compaction_t, ustrip(u"s", 1.20u"Myr") / compaction_t, grid.tfinal / compaction_t]
-output_call = PresetTimeCallback(save_time,save_data)
+output_call = PresetTimeCallback(save_time,save_data, save_positions=(false,false))
 
 # define a steplimiter for the timestep of the two-phase flow (depends on the courant number of the magma)
 steplimiter = StepsizeLimiter(dtmaxC;safety_factor=10//10,max_step=false,cached_dtcache=0.0)
@@ -118,10 +119,9 @@ steplimiter = StepsizeLimiter(dtmaxC;safety_factor=10//10,max_step=false,cached_
 # define the order in which to call the callback functions
 callbacks = CallbackSet(velocity_call, advection_call, steplimiter, plotting, output_call)
 
-# run model
-sol = simulate(model, callbacks=callbacks)
+simulate(model; callbacks=callbacks)
 ```
 
 This code will run one model for one advection algorithm with the settings of the article. You can change the resolution changing the definition of the variable grid and the algorithm name by changing the variable algo_name (by default WENO-5 with 200x400 grid points).
 
-If you want to explore the code or run the rotational numerical test, you can download or clone this repo in your personal space. The main code is in the src folder and the rotational test is contained in the folder article/rotation_cone.
+If you want to explore the code or run the rotational and convection numerical tests, you can download or clone this repo in your personal space. The main code is in the src folder and the numerical tests are contained in the folder article/numerical_tests.
