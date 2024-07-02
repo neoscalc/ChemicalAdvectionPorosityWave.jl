@@ -1,7 +1,7 @@
 name = "ChemicalAdvectionPorosityWave"
 uuid = "d0aed364-ce7f-44d2-aa73-409f3752bc82"
 authors = ["Hugo Dominguez"]
-version = "0.0.3"
+version = "1.0.0"
 
 [deps]
 BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
